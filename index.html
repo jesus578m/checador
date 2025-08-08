@@ -5,340 +5,282 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Checador Comida — DL (Multi-líneas)</title>
 <style>
-  * { box-sizing: border-box; }
-  html, body { height: 100%; }
-  body {
-    margin: 0;
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-    background: #0b1220;
-    color: #e5e7eb;
-    display: flex;
-    flex-direction: column;
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:#0b1220; color:#e5e7eb;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    display:flex; flex-direction:column;
   }
-  header {
-    padding: 14px 16px;
-    background: #0f172a;
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
+  header{background:#0f172a; padding:12px 16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+  header h1{margin:0; font-size:18px; font-weight:700}
+  .pill{background:#1d4ed8; padding:2px 8px; border-radius:999px; font-size:12px; margin-left:8px}
+  .wrap{flex:1; padding:16px; display:grid; place-items:start}
+  .card{width:min(1200px,100%); margin:auto; background:#111827; border:1px solid #1f2937; border-radius:14px; padding:18px}
+  .topbar{display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap}
+  .group{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  label{font-size:14px; opacity:.85}
+  select,button{
+    background:#1f2937; color:#e5e7eb; border:1px solid #374151;
+    padding:8px 12px; border-radius:10px; cursor:pointer
   }
-  header h1 { font-size: 18px; margin: 0; font-weight: 700; }
-  .pill { background: #1d4ed8; padding: 2px 8px; border-radius: 999px; font-size: 12px; margin-left: 8px; }
-  .wrap { flex: 1; display: grid; place-items: start center; padding: 16px; }
-  .card {
-    width: min(1000px, 100%);
-    background: #111827;
-    border: 1px solid #1f2937;
-    border-radius: 16px;
-    padding: 18px;
+  #inp{
+    width:100%; font-size:28px; padding:14px 16px; border-radius:12px;
+    border:1px solid #374151; background:#0b1220; color:#f9fafb; outline:none;
+    text-align:center; margin:8px 0 12px
   }
-  .topbar { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-  .group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  select, button {
-    background: #1f2937; color: #e5e7eb; border: 1px solid #374151;
-    padding: 8px 12px; border-radius: 10px; cursor: pointer;
-  }
-  .prompt { font-size: 20px; text-align: center; margin: 10px 0 12px; color: #f3f4f6; }
-  #inp {
-    width: 100%; font-size: 28px; padding: 12px 14px; border-radius: 12px;
-    border: 1px solid #374151; background: #0b1220; color: #f9fafb; text-align: center; outline: none;
-  }
-  .status { margin-top: 12px; padding: 12px; border-radius: 12px; text-align: center; font-size: 18px; font-weight: 700; }
-  .ok  { background: #052e1f; color: #a7f3d0; border: 1px solid #065f46; }
-  .err { background: #3b0d0d; color: #fecaca; border: 1px solid #7f1d1d; }
-  .muted { color:#9ca3af; }
-
-  .table {
-    margin-top: 14px; background: #0b1220; border: 1px solid #1f2937;
-    border-radius: 12px; overflow: hidden;
-  }
-  .thead, .row {
-    display: grid; grid-template-columns: 120px 1fr 120px 120px; gap: 10px; align-items: center;
-  }
-  .thead {
-    background: #0f172a; padding: 10px 12px; font-weight: 700; border-bottom: 1px solid #1f2937;
-  }
-  .row {
-    padding: 10px 12px; border-bottom: 1px dashed #1f2937; font-size: 14px;
-  }
-  .row:last-child { border-bottom: none; }
-  .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .logo { height: 40px; }
-  .small { font-size: 12px; color: #9ca3af; }
+  .status{margin:8px 0 6px; padding:12px; border-radius:10px; font-weight:700; text-align:center; display:none}
+  .ok{background:#052e1f; color:#a7f3d0; border:1px solid #065f46}
+  .err{background:#3b0d0d; color:#fecaca; border:1px solid #7f1d1d}
+  .hint{font-size:12px; opacity:.7; margin-top:8px}
+  table{width:100%; border-collapse:collapse; overflow:hidden; border-radius:10px; border:1px solid #1f2937}
+  thead th{background:#0f172a; font-weight:700; text-align:left; font-size:14px; padding:10px}
+  tbody td{border-top:1px dashed #1f2937; padding:10px; font-size:15px}
+  .id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .time{font-variant-numeric:tabular-nums}
+  .right{margin-left:auto}
 </style>
 </head>
 <body>
-<header>
-  <img src="logo.png" class="logo" alt="Logo TechOps">
-  <h1>Checador DL — Comida <span class="pill">Salida / Regreso</span></h1>
+  <header>
+    <h1>Checador DL — Comida <span class="pill">Salida / Regreso</span></h1>
+    <div class="right group" style="margin-left:auto">
+      <label for="line">Línea:</label>
+      <select id="line"></select>
+      <button id="btnExport">Exportar CSV</button>
+    </div>
+  </header>
 
-  <div style="margin-left:auto;" class="group">
-    <label for="line">Línea:</label>
-    <select id="line"></select>
-    <button id="fs">Pantalla completa</button>
-    <button id="export">Exportar CSV</button>
-    <button id="clearToday">Borrar hoy</button>
-  </div>
-</header>
-
-<div class="wrap">
-  <div class="card">
-    <div class="prompt">Escanea tu tarjeta o escribe tu ID y presiona Enter</div>
-    <input id="inp" placeholder="Escanear aquí…" autocomplete="off" />
-    <div id="status" class="status" style="display:none;"></div>
-
-    <div class="table">
-      <div class="thead">
-        <div>ID</div><div>Nombre</div><div>Salida</div><div>Regreso</div>
+  <div class="wrap">
+    <div class="card">
+      <div class="topbar" style="justify-content:center; width:100%">
+        <h2 style="margin:0; font-size:20px; font-weight:600; opacity:.9">
+          Escanea tu tarjeta o escribe tu ID y presiona Enter
+        </h2>
       </div>
-      <div id="recent"></div>
-    </div>
 
-    <div class="small" style="margin-top:8px;">
-      Se actualiza cada 5 segundos. Lo que ves es lo que está en <code>data.json</code>.
+      <input id="inp" placeholder="Escanear aquí…" autocomplete="off" />
+
+      <div id="status" class="status"></div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width:120px">ID</th>
+            <th>Nombre</th>
+            <th style="width:140px">Salida</th>
+            <th style="width:140px">Regreso</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+
+      <div class="hint">Se actualiza cada 5 segundos. Lo que ves es lo que está en <code>data.json</code>.</div>
     </div>
   </div>
-</div>
 
 <script>
 /*** CONFIG ***/
-// Cambia esto si tu worker tiene otra URL:
-const WORKER_URL = "https://checador.montoyacarrillojesus6.workers.dev/";
-const CATALOGO_URL = "catalogo.json";
-const DATA_URL = "data.json";               // archivo en GitHub (lo actualiza tu Worker)
-const REFRESH_INTERVAL = 5000;              // ms
+const WORKER_URL  = "https://checador.montoyacarrillojesus6.workers.dev/"; // tu Worker
+// data.json directo del repo (ajusta si cambias owner/branch/repo)
+const DATA_URL    = "https://raw.githubusercontent.com/jesus578m/checador/main/data.json";
+const CATALOGO_URL = "catalogo.json"; // Debe existir en la misma carpeta
 const REMEMBER_LINE_KEY = "dlc:lastLine";
 const LINES = Array.from({length:12}, (_,i)=>`DL${i+1}`);
 
 /*** UI refs ***/
-const selline = document.getElementById("line");
+const lineSel = document.getElementById("line");
 const inp = document.getElementById("inp");
+const tbody = document.getElementById("tbody");
 const statusBox = document.getElementById("status");
-const recentBox = document.getElementById("recent");
-const btnFS = document.getElementById("fs");
-const btnExport = document.getElementById("export");
-const btnClear = document.getElementById("clearToday");
+const btnExport = document.getElementById("btnExport");
 
-/*** Estado ***/
-let catalog = [];
-let byId = new Map();
-let lastGrouped = []; // lo que se ve en la tabla (para export)
+/*** STATE ***/
+let catalog = [];  // [{employee_id,name}]
+let data = [];     // contenido de data.json (array de filas consolidadas)
+let selectedLine = localStorage.getItem(REMEMBER_LINE_KEY) || "DL1";
+let refreshTimer = null;
 
-/*** Utilidades ***/
-function setStatus(ok, msg) {
-  statusBox.className = "status " + (ok ? "ok" : "err");
-  statusBox.textContent = msg;
-  statusBox.style.display = "block";
-  setTimeout(()=>statusBox.style.display="none", 2800);
+/*** INIT ***/
+init();
+async function init() {
+  // líneas
+  lineSel.innerHTML = LINES.map(l=>`<option value="${l}">${l}</option>`).join("");
+  lineSel.value = selectedLine;
+  lineSel.addEventListener("change", () => {
+    selectedLine = lineSel.value;
+    localStorage.setItem(REMEMBER_LINE_KEY, selectedLine);
+    render();
+  });
+
+  // carga inicial
+  await loadCatalog();
+  await refresh();
+
+  // polling
+  refreshTimer = setInterval(refresh, 5000);
 }
 
-function todayISO() { return new Date().toISOString().slice(0,10); }
-
-function toHM(d) {
-  try { return new Date(d).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}); }
-  catch(e){ return ""; }
+// Cargar catálogo y normalizar
+async function loadCatalog() {
+  try {
+    const res = await fetch(CATALOGO_URL, { cache: "no-store" });
+    const raw = await res.json();
+    catalog = (Array.isArray(raw) ? raw : []).map(x => ({
+      employee_id: String(x.employee_id ?? x.CREDENCIAL ?? x.credencial ?? "").trim(),
+      name: String(x.name ?? x.NOMBRE_COMPLETO ?? "").trim(),
+    })).filter(p => p.employee_id && p.name);
+    console.log("Catálogo cargado:", catalog.length, "personas");
+  } catch (e) {
+    console.error("No se pudo cargar catalogo.json", e);
+    showStatus("Error cargando catalogo.json", false);
+  }
 }
 
-/*** Render tabla agrupada ***/
-function renderRecentGroup(data) {
-  recentBox.innerHTML = "";
-  lastGrouped = [];
+// Traer data.json del repo (para que todos vean en vivo)
+async function refresh() {
+  try {
+    const res = await fetch(DATA_URL + "?_=" + Date.now(), { cache: "no-store" });
+    // En caso de repo vacío, intenta parsear texto
+    const txt = await res.text();
+    data = JSON.parse(txt || "[]");
+    render();
+  } catch (e) {
+    console.error("No se pudo leer data.json", e);
+    showStatus("No se pudo leer data.json", false);
+  }
+}
 
-  if (!data.length) {
-    recentBox.innerHTML = `<div class="row"><div class="muted">—</div><div class="muted">Sin registros en esta línea hoy.</div><div></div><div></div></div>`;
+// Escucha de Enter en el input
+inp.addEventListener("keydown", async (e) => {
+  if (e.key !== "Enter") return;
+  const raw = inp.value.trim();
+  if (!raw) return;
+
+  const person = findPersonByScan(raw);
+  if (!person) {
+    showStatus(`ID "${raw}" no encontrado en catálogo`, false);
+    inp.select();
     return;
   }
 
-  // Agrupar por empleado y fecha
-  const grupos = {};
-  for (const r of data) {
-    const fecha = r.timestamp.slice(0,10);
-    const key = r.employee_id + "_" + fecha;
-    if (!grupos[key]) {
-      grupos[key] = {
-        id: r.employee_id,
-        nombre: r.nombre,
-        linea: r.linea,
-        salidaISO: "", regresoISO: ""
-      };
+  const today = new Date().toISOString().slice(0,10);
+  const existing = (data || []).find(r =>
+    r.date === today &&
+    r.linea === selectedLine &&
+    String(r.employee_id) === String(person.employee_id)
+  );
+  const nextMark = !existing?.out ? "out" : (!existing?.back ? "back" : "out");
+
+  showStatus(`${person.name} → ${nextMark === 'out' ? 'SALIDA' : 'REGRESO'}`, true);
+
+  const body = {
+    action: "append",
+    record: {
+      date: today,
+      linea: selectedLine,
+      employee_id: person.employee_id,
+      name: person.name,
+      mark: nextMark
     }
-    if (r.evento === "salida")  grupos[key].salidaISO  = r.timestamp;
-    if (r.evento === "regreso") grupos[key].regresoISO = r.timestamp;
-  }
-
-  const arr = Object.values(grupos)
-    .sort((a,b)=> (a.salidaISO||"") < (b.salidaISO||"") ? 1 : -1);
-
-  for (const g of arr) {
-    const row = document.createElement("div");
-    row.className = "row";
-    row.innerHTML = `
-      <div class="id">${g.id}</div>
-      <div>${g.nombre}</div>
-      <div>${g.salidaISO ? toHM(g.salidaISO) : "-"}</div>
-      <div>${g.regresoISO ? toHM(g.regresoISO) : "-"}</div>
-    `;
-    recentBox.appendChild(row);
-
-    lastGrouped.push({
-      id: g.id,
-      nombre: g.nombre,
-      linea: g.linea,
-      salida: g.salidaISO ? toHM(g.salidaISO) : "",
-      regreso: g.regresoISO ? toHM(g.regresoISO) : "",
-      fecha: g.salidaISO ? g.salidaISO.slice(0,10) : todayISO()
-    });
-  }
-}
-
-/*** Cargar catálogo ***/
-async function loadCatalog() {
-  const res = await fetch(CATALOGO_URL + "?t=" + Date.now());
-  const data = await res.json();
-  catalog = data;
-  byId.clear();
-  for (const p of catalog) {
-    // Estructura esperada del catalogo.json:
-    // { "CREDENCIAL": 1814855026, "NOMBRE_COMPLETO": "NOMBRE" }
-    const id = String(p.CREDENCIAL);
-    byId.set(id, { name: p.NOMBRE_COMPLETO });
-  }
-}
-
-/*** Cargar datos globales desde data.json ***/
-async function loadGlobalData() {
-  const res = await fetch(DATA_URL + "?t=" + Date.now(), {cache: "no-store"});
-  const all = await res.json(); // Array de registros
-  const linea = selline.value;
-  const hoy = todayISO();
-  const filtrados = all.filter(r => r.linea === linea && r.timestamp.startsWith(hoy));
-  renderRecentGroup(filtrados);
-}
-
-/*** Decidir S/R con base en lo último del día ***/
-async function nextEvento(id) {
-  const res = await fetch(DATA_URL + "?t=" + Date.now());
-  const all = await res.json();
-  const hoy = todayISO();
-  const personaHoy = all.filter(r => r.employee_id === id && r.timestamp.startsWith(hoy));
-  const ultimo = personaHoy.sort((a,b)=>a.timestamp<b.timestamp?1:-1)[0];
-  return (!ultimo || ultimo.evento === "regreso") ? "salida" : "regreso";
-}
-
-/*** Manejar escaneo ***/
-async function handleScan(rawId) {
-  const id = String(rawId).replace(/\D+/g,"");
-  if (!id) { setStatus(false, "ID inválido"); return; }
-  const found = byId.get(id);
-  if (!found) { setStatus(false, `No encontrado: ${id}`); return; }
-
-  const ev = await nextEvento(id);
-
-  const record = {
-    linea: selline.value,
-    employee_id: id,
-    nombre: found.name,
-    evento: ev,
-    timestamp: new Date().toISOString()
   };
 
   try {
-    const put = await fetch(WORKER_URL, {
+    const res = await fetch(WORKER_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "append", record })
+      body: JSON.stringify(body),
     });
-    if (!put.ok) throw new Error("Worker respondió error");
-    setStatus(true, `${ev.toUpperCase()} — ${found.name}`);
-    loadGlobalData();
-  } catch (e) {
-    console.error(e);
-    setStatus(false, "No se pudo guardar");
+    const j = await res.json().catch(()=>({ok:false}));
+    if (j && j.ok) {
+      inp.value = "";
+      await refresh();
+    } else {
+      console.warn("Respuesta worker", j);
+      showStatus("No se pudo guardar (Worker no OK)", false);
+    }
+  } catch (err) {
+    console.error(err);
+    showStatus("Error de red al guardar", false);
+  }
+});
+
+// Encontrar persona por escaneo (solo dígitos)
+function findPersonByScan(scan) {
+  const id = String(scan).replace(/\D/g, "");
+  if (!id) return null;
+  return catalog.find(p => p.employee_id === id) || null;
+}
+
+// Render de tabla (hoy + línea seleccionada)
+function render() {
+  const today = new Date().toISOString().slice(0,10);
+  const rows = (Array.isArray(data)?data:[])
+    .filter(r => r.date === today && r.linea === selectedLine)
+    .sort((a,b) => (a.name||"").localeCompare(b.name||""));
+
+  tbody.innerHTML = rows.map(r => {
+    const out = r.out ? fmtTime(r.out) : "";
+    const back = r.back ? fmtTime(r.back) : "";
+    return `<tr>
+      <td class="id">${escapeHtml(r.employee_id)}</td>
+      <td>${escapeHtml(r.name||"")}</td>
+      <td class="time">${out}</td>
+      <td class="time">${back}</td>
+    </tr>`;
+  }).join("");
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="opacity:.7; text-align:center; padding:14px">
+      No hay registros para hoy en <b>${escapeHtml(selectedLine)}</b>.
+    </td></tr>`;
   }
 }
 
-/*** Exportar CSV de lo visible ***/
-function exportCSV() {
-  if (!lastGrouped.length) { setStatus(false, "Nada que exportar"); return; }
-  const header = ["Linea","ID","Nombre","Fecha","Salida","Regreso"];
-  const rows = lastGrouped.map(r => [r.linea, r.id, `"${r.nombre.replace(/"/g,'""')}"`, r.fecha, r.salida, r.regreso]);
-  const csv = [header, ...rows].map(r => r.join(",")).join("\n");
-  const blob = new Blob([csv], {type: "text/csv;charset=utf-8"});
+// Exportar CSV de lo que ves
+btnExport.addEventListener("click", () => {
+  const today = new Date().toISOString().slice(0,10);
+  const rows = (Array.isArray(data)?data:[])
+    .filter(r => r.date === today && r.linea === selectedLine)
+    .sort((a,b) => (a.name||"").localeCompare(b.name||""));
+
+  const head = ["Fecha","Línea","ID","Nombre","Salida","Regreso"];
+  const body = rows.map(r => [
+    r.date, r.linea, r.employee_id, r.name,
+    r.out ? fmtTime(r.out) : "", r.back ? fmtTime(r.back) : ""
+  ]);
+  const csv = [head, ...body].map(row =>
+    row.map(v => `"${String(v??"").replace(/"/g,'""')}"`).join(",")
+  ).join("\n");
+
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  const hoy = todayISO();
-  a.download = `checador_${selline.value}_${hoy}.csv`;
+  a.download = `checador_${today}_${selectedLine}.csv`;
   document.body.appendChild(a);
   a.click();
   a.remove();
-}
+});
 
-/*** Borrar HOY de la línea actual ***/
-async function clearTodayForLine() {
-  if (!confirm(`¿Borrar los registros de HOY para ${selline.value}?`)) return;
+// Utils
+function fmtTime(ts){
+  // admite ISO o epoch
   try {
-    // 1) Traer todo
-    const res = await fetch(DATA_URL + "?t=" + Date.now());
-    const all = await res.json();
-    const hoy = todayISO();
-
-    // 2) Filtrar (quitamos los de HOY de esta línea)
-    const kept = all.filter(r => !(r.linea === selline.value && r.timestamp.startsWith(hoy)));
-
-    // 3) Guardar reemplazando en el worker
-    const put = await fetch(WORKER_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "replace", data: kept })
-    });
-    if (!put.ok) throw new Error("Worker respondió error");
-
-    setStatus(true, `Registros de hoy borrados en ${selline.value}`);
-    loadGlobalData();
-  } catch (e) {
-    console.error(e);
-    setStatus(false, "No se pudo borrar");
-  }
+    const d = typeof ts === "number" ? new Date(ts) : new Date(String(ts));
+    if (isNaN(d)) return "";
+    return d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+  } catch { return ""; }
 }
-
-/*** Fullscreen ***/
-function toggleFullscreen() {
-  if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
-  else document.exitFullscreen();
+function showStatus(msg, ok=true){
+  statusBox.textContent = msg;
+  statusBox.className = "status " + (ok ? "ok" : "err");
+  statusBox.style.display = "block";
+  clearTimeout(showStatus._t);
+  showStatus._t = setTimeout(()=>{ statusBox.style.display="none"; }, 3500);
 }
-
-/*** Inicio ***/
-(async function init() {
-  // llenar líneas
-  selline.innerHTML = LINES.map(l=>`<option value="${l}">${l}</option>`).join("");
-  selline.value = localStorage.getItem(REMEMBER_LINE_KEY) || LINES[0];
-  selline.addEventListener("change",()=>{
-    localStorage.setItem(REMEMBER_LINE_KEY, selline.value);
-    loadGlobalData();
-  });
-
-  // cargar catálogo
-  await loadCatalog();
-
-  // escaneo
-  inp.addEventListener("keydown", e=>{
-    if (e.key === "Enter") {
-      const val = inp.value.trim();
-      inp.value = "";
-      handleScan(val);
-    }
-  });
-
-  // botones
-  btnFS.addEventListener("click", toggleFullscreen);
-  btnExport.addEventListener("click", exportCSV);
-  btnClear.addEventListener("click", clearTodayForLine);
-
-  // actualizar cada X segundos
-  await loadGlobalData();
-  setInterval(loadGlobalData, REFRESH_INTERVAL);
-})();
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m]));
+}
 </script>
 </body>
 </html>
