@@ -5,289 +5,270 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Checador Comida — DL (Multi-líneas)</title>
 <style>
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#0b1220;color:#e5e7eb;display:flex;flex-direction:column}
-  header{padding:14px 16px;background:#0f172a;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  header h1{font-size:18px;margin:0;font-weight:700}
-  .pill{background:#1d4ed8;padding:2px 8px;border-radius:999px;font-size:12px;margin-left:8px}
-  .wrap{flex:1;display:grid;place-items:center;padding:16px}
-  .card{width:min(760px,100%);background:#111827;border:1px solid #1f2937;border-radius:16px;padding:18px}
-  .group{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  select,button{background:#1f2937;color:#e5e7eb;border:1px solid #374151;padding:8px 12px;border-radius:10px;cursor:pointer}
-  .prompt{font-size:22px;text-align:center;margin:10px 0 12px;color:#f3f4f6}
-  #inp{width:100%;font-size:28px;padding:14px 16px;border-radius:12px;border:1px solid #374151;background:#0b1220;color:#f9fafb;text-align:center;outline:none}
-  .status{margin-top:12px;padding:12px;border-radius:12px;text-align:center;font-size:18px;font-weight:700;display:none}
-  .ok{background:#052e1f;color:#a7f3d0;border:1px solid #065f46}
-  .err{background:#3b0d0d;color:#fecaca;border:1px solid #7f1d1d}
-  .list{margin-top:14px;background:#0b1220;border:1px solid #1f2937;border-radius:12px;padding:10px;max-height:300px;overflow:auto}
-  .row{display:flex;justify-content:space-between;gap:10px;padding:6px 4px;border-bottom:1px dashed #1f2937;font-size:14px}
-  .row:last-child{border-bottom:none}
-  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-  .logo{height:40px}
+  * { box-sizing: border-box; }
+  html, body { height:100%; }
+  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#0b1220; color:#e5e7eb; display:flex; flex-direction:column; }
+  header { padding:14px 16px; background:#0f172a; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; font-weight:700; }
+  .pill { background:#1d4ed8; padding:2px 8px; border-radius:999px; font-size:12px; margin-left:8px; }
+  .wrap { flex:1; display:grid; place-items:center; padding:16px; }
+  .card { width:min(860px, 100%); background:#111827; border:1px solid #1f2937; border-radius:16px; padding:18px; }
+  .topbar { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .group { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  select, button { background:#1f2937; color:#e5e7eb; border:1px solid #374151; padding:8px 12px; border-radius:10px; cursor:pointer; }
+  .prompt { font-size:24px; text-align:center; margin:10px 0 16px; color:#f3f4f6; }
+  #inp { width:100%; font-size:28px; padding:14px 16px; border-radius:12px; border:1px solid #374151; background:#0b1220; color:#f9fafb; text-align:center; outline:none; letter-spacing:1px; }
+  .status { margin-top:16px; padding:16px; border-radius:12px; text-align:center; font-size:20px; font-weight:700; display:none; }
+  .ok { background:#052e1f; color:#a7f3d0; border:1px solid #065f46; }
+  .err { background:#3b0d0d; color:#fecaca; border:1px solid #7f1d1d; }
+  .list { margin-top:14px; background:#0b1220; border:1px solid #1f2937; border-radius:12px; padding:10px; max-height:320px; overflow:auto; }
+  .row { display:grid; grid-template-columns: 92px 1fr 130px 64px; align-items:center; gap:8px; padding:6px 4px; border-bottom:1px dashed #1f2937; font-size:14px; }
+  .row:last-child { border-bottom: none; }
+  .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .logo { height:40px; }
+  .muted { color:#9ca3af; font-size:12px; }
 </style>
 </head>
 <body>
 <header>
   <img src="logo.png" class="logo" alt="Logo">
   <h1>Checador DL — Comida <span class="pill">Salida / Regreso</span></h1>
-  <div style="margin-left:auto" class="group">
+  <div style="margin-left:auto;" class="group">
     <label for="line">Línea:</label>
     <select id="line"></select>
     <button id="fs">Pantalla completa</button>
     <button id="export">Exportar CSV</button>
-    <button id="clear">Borrar hoy</button>
+    <button id="clearToday">Borrar hoy</button>
   </div>
 </header>
 
 <div class="wrap">
   <div class="card">
     <div class="prompt">Escanea tu tarjeta o escribe tu ID y presiona Enter</div>
-    <input id="inp" placeholder="Escanear aquí…" autocomplete="off" />
+    <input id="inp" placeholder="Escanear aquí…" autocomplete="off" inputmode="numeric" />
     <div id="status" class="status"></div>
     <div class="list" id="recent"></div>
+    <div class="muted" id="loader"></div>
   </div>
 </div>
 
 <script>
 /*** CONFIG ***/
-const WORKER_URL = "https://checador.montoyacarrillojesus6.workers.dev"; // <— cambia si usas otro
-const CATALOG_URL = "catalogo.json"; // Debe existir en la misma carpeta
+const WORKER_URL = "https://checador.montoyacarrillojesus6.workers.dev/"; // <-- cambia si usas otro
+const CATALOGO_URL = "catalogo.json"; // Debe existir en la misma carpeta
 const REMEMBER_LINE_KEY = "dlc:lastLine";
+const LAST_EVENT_KEY_PREFIX = "dlc:lastEvent:"; // se concatena YYYY-MM-DD
+const RECENTS_KEY_PREFIX   = "dlc:recents:";    // se concatena YYYY-MM-DD
 const LINES = Array.from({length:12}, (_,i)=>`DL${i+1}`);
 
 /*** UI refs ***/
-const selLine = document.getElementById("line");
+const selline = document.getElementById("line");
 const inp = document.getElementById("inp");
-const statusEl = document.getElementById("status");
-const recentEl = document.getElementById("recent");
+const statusBox = document.getElementById("status");
+const recentBox = document.getElementById("recent");
+const btnFS = document.getElementById("fs");
+const btnExport = document.getElementById("export");
+const btnClear = document.getElementById("clearToday");
+const loader = document.getElementById("loader");
 
-/*** Estado ***/
-let CATALOG = [];           // {employee_id, name}
-let ALL = [];               // registros completos desde data.json
-let CURRENT_LINE = "DL1";
+/*** State ***/
+let catalog = [];
+let byId = new Map(); // id -> {name}
+let recent = [];      // registros de hoy (vista)
+let lastEvent = {};   // { employee_id: "salida"|"regreso" }
 
-/*** Fechas (hora local MX) ***/
-const tz = "America/Mexico_City";
-const fmtTime = new Intl.DateTimeFormat("es-MX",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false,timeZone:tz});
-function todayISO(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
-function nowHM(){ return fmtTime.format(new Date()); }
+/*** Utils ***/
+const todayKey = () => new Date().toISOString().slice(0,10);
+const getLastEventKey = () => LAST_EVENT_KEY_PREFIX + todayKey();
+const getRecentsKey   = () => RECENTS_KEY_PREFIX + todayKey();
 
-/*** Helpers de red con el Worker ***/
-async function loadAll(){
-  const r = await fetch(WORKER_URL, { cache:"no-store" });
-  if (!r.ok) throw new Error("No se pudo leer datos del Worker");
-  const j = await r.json();
-  ALL = Array.isArray(j) ? j : [];
-}
-async function appendRecord(rec){
-  const r = await fetch(WORKER_URL, {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ action:"append", record: rec })
-  });
-  const j = await r.json().catch(()=>({ok:false}));
-  if (!r.ok || !j.ok) throw new Error("No se pudo guardar (append)");
-}
-async function replaceAll(newArray){
-  const r = await fetch(WORKER_URL, {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ action:"replace", data: newArray })
-  });
-  const j = await r.json().catch(()=>({ok:false}));
-  if (!r.ok || !j.ok) throw new Error("No se pudo guardar (replace)");
+function setStatus(ok, msg) {
+  statusBox.className = "status " + (ok ? "ok" : "err");
+  statusBox.textContent = msg;
+  statusBox.style.display = "block";
+  setTimeout(()=>statusBox.style.display="none", 3500);
 }
 
-/*** Catalogo ***/
-async function loadCatalog(){
-  // Carga desde catalogo.json
-  const r = await fetch(CATALOG_URL, { cache:"no-store" });
-  if (!r.ok) throw new Error("No pude cargar catalogo.json");
-  const arr = await r.json();
-  if (!Array.isArray(arr)) throw new Error("catalogo.json no es un arreglo");
-  // Normaliza a {employee_id:String, name:String}
-  CATALOG = arr.map(x => ({
-    employee_id: String(x.CREDENCIAL ?? x.employee_id ?? "").trim(),
-    name: String(x.NOMBRE_COMPLETO ?? x.name ?? "").trim()
-  })).filter(x => x.employee_id && x.name);
+function saveLocalState() {
+  localStorage.setItem(getLastEventKey(), JSON.stringify(lastEvent));
+  localStorage.setItem(getRecentsKey(), JSON.stringify(recent));
 }
 
-/*** UI: líneas ***/
-function populateLines(){
-  selLine.innerHTML = LINES.map(l=>`<option value="${l}">${l}</option>`).join("");
-  const urlLine = new URL(location.href).searchParams.get("line");
-  const saved = localStorage.getItem(REMEMBER_LINE_KEY);
-  const start = (urlLine && LINES.includes(urlLine)) ? urlLine :
-                (saved && LINES.includes(saved)) ? saved : "DL1";
-  selLine.value = start;
-  CURRENT_LINE = selLine.value;
-  localStorage.setItem(REMEMBER_LINE_KEY, CURRENT_LINE);
-}
-selLine.addEventListener("change", ()=>{
-  CURRENT_LINE = selLine.value;
-  localStorage.setItem(REMEMBER_LINE_KEY, CURRENT_LINE);
-  renderRecent();
-});
-
-/*** Mensajes ***/
-function flashOK(msg){ statusEl.className="status ok"; statusEl.textContent=msg; statusEl.style.display="block"; setTimeout(()=>statusEl.style.display="none", 2000); }
-function flashERR(msg){ statusEl.className="status err"; statusEl.textContent=msg; statusEl.style.display="block"; setTimeout(()=>statusEl.style.display="none", 3000); }
-
-/*** Render lista de hoy por línea ***/
-function renderRecent(){
-  const hoy = todayISO();
-  const rows = ALL
-    .filter(r => r.linea===CURRENT_LINE && r.fecha===hoy)
-    .slice(-100).reverse()
-    .map(r => `
-      <div class="row">
-        <div class="mono">${r.employee_id}</div>
-        <div>${r.name}</div>
-        <div>Salida: <b>${r.salida_comida||"-"}</b></div>
-        <div>Regreso: <b>${r.regreso_comida||"-"}</b></div>
-        <div>${r.duracion_minutos!=null ? r.duracion_minutos+" min" : "-"}</div>
-      </div>
-    `).join("");
-  recentEl.innerHTML = rows || `<div class="row"><em>Sin registros hoy en ${CURRENT_LINE}</em></div>`;
+function loadLocalState() {
+  try {
+    lastEvent = JSON.parse(localStorage.getItem(getLastEventKey()) || "{}");
+  } catch { lastEvent = {}; }
+  try {
+    recent = JSON.parse(localStorage.getItem(getRecentsKey()) || "[]");
+  } catch { recent = []; }
 }
 
-/*** Buscar en catálogo ***/
-function findEmployeeById(id){
-  const key = String(id).trim();
-  // búsqueda exacta por credencial
-  return CATALOG.find(x => x.employee_id === key) || null;
-}
-
-/*** Lógica toggle Salida/Regreso ***/
-async function toggleMark(emp){
-  const hoy = todayISO();
-  const now = nowHM();
-
-  // buscar último registro de hoy para ese empleado/linea
-  let lastIdx = -1;
-  for (let i=ALL.length-1; i>=0; i--){
-    const r = ALL[i];
-    if (r.linea===CURRENT_LINE && r.employee_id===emp.employee_id && r.fecha===hoy){
-      lastIdx = i; break;
-    }
+function renderRecent() {
+  recentBox.innerHTML = "";
+  if (!recent.length) {
+    recentBox.innerHTML = `<div class="muted" style="padding:8px;">Sin registros hoy.</div>`;
+    return;
   }
-
-  if (lastIdx >= 0){
-    const last = ALL[lastIdx];
-    if (last.salida_comida && !last.regreso_comida){
-      // cerrar con regreso
-      const minutes = (()=> {
-        try{
-          const [h1,m1] = last.salida_comida.split(":").map(Number);
-          const [h2,m2] = now.split(":").map(Number);
-          return Math.max(0, (h2*60+m2)-(h1*60+m1));
-        }catch{ return null; }
-      })();
-      const updated = { ...last, regreso_comida: now, duracion_minutos: minutes };
-      const newAll = ALL.slice();
-      newAll[lastIdx] = updated;
-      await replaceAll(newAll);
-      ALL = newAll;
-      flashOK(`✔ Regreso de ${emp.name} — ${now}`);
-      return;
-    }
+  for (const r of recent.slice().reverse()) {
+    const row = document.createElement("div");
+    row.className = "row";
+    const hhmm = new Date(r.timestamp).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+    row.innerHTML = `
+      <div class="muted">${hhmm}</div>
+      <div><span class="id">${r.employee_id}</span> — ${r.nombre}</div>
+      <div>${r.evento.toUpperCase()}</div>
+      <div>${r.linea}</div>
+    `;
+    recentBox.appendChild(row);
   }
-
-  // crear nueva salida
-  const nuevo = {
-    linea: CURRENT_LINE,
-    employee_id: emp.employee_id,
-    name: emp.name,
-    fecha: hoy,
-    salida_comida: now,
-    regreso_comida: null,
-    duracion_minutos: null
-  };
-  await appendRecord(nuevo);
-  ALL.push(nuevo);
-  flashOK(`✔ Salida de ${emp.name} — ${now}`);
 }
 
-/*** Input (lector/Enter) ***/
-inp.addEventListener("keydown", async (ev)=>{
-  if (ev.key !== "Enter") return;
-  const raw = inp.value.trim();
-  inp.value = "";
-  if (!raw) return;
-
-  try{
-    // refresca estado para evitar choques
-    await loadAll();
-    const emp = findEmployeeById(raw);
-    if (!emp){ flashERR(`ID ${raw} no encontrado`); return; }
-    await toggleMark(emp);
-    renderRecent();
-  }catch(err){
-    console.error(err);
-    flashERR("Error al guardar. Reintenta.");
+function toCSV(rows) {
+  const header = ["fecha","hora","linea","employee_id","nombre","evento","timestamp"];
+  const lines = [header.join(",")];
+  for (const r of rows) {
+    const d = new Date(r.timestamp);
+    const fecha = d.toISOString().slice(0,10);
+    const hora = d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+    const row = [
+      fecha,
+      hora,
+      r.linea,
+      `"${(r.employee_id||"").replace(/"/g,'""')}"`,
+      `"${(r.nombre||"").replace(/"/g,'""')}"`,
+      r.evento,
+      r.timestamp
+    ];
+    lines.push(row.join(","));
   }
-});
+  return lines.join("\n");
+}
 
-/*** Exportar CSV del día/linea ***/
-document.getElementById("export").addEventListener("click", ()=>{
-  const hoy = todayISO();
-  const data = ALL.filter(r => r.linea===CURRENT_LINE && r.fecha===hoy);
-  const csv = ["linea,employee_id,name,fecha,salida,regreso,duracion_min"];
-  for (const r of data){
-    csv.push([
-      r.linea, r.employee_id, quote(r.name),
-      r.fecha, r.salida_comida||"", r.regreso_comida||"",
-      (r.duracion_minutos ?? "")
-    ].map(v=>String(v)).join(","));
-  }
-  const blob = new Blob([csv.join("\n")],{type:"text/csv"});
+function download(filename, text) {
+  const blob = new Blob([text], {type: "text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `checador_${CURRENT_LINE}_${hoy}.csv`;
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(a.href);
-});
-function quote(s){ return `"${String(s).replace(/"/g,'""')}"`; }
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
-/*** Borrar registros de HOY de la línea actual ***/
-document.getElementById("clear").addEventListener("click", async ()=>{
-  if (!confirm(`¿Borrar registros de hoy para ${CURRENT_LINE}?`)) return;
-  const hoy = todayISO();
-  const keep = ALL.filter(r => !(r.linea===CURRENT_LINE && r.fecha===hoy));
-  try{
-    await replaceAll(keep);
-    ALL = keep;
+/*** Boot ***/
+(function init() {
+  // líneas
+  selline.innerHTML = LINES.map(l=>`<option value="${l}">${l}</option>`).join("");
+  const remembered = localStorage.getItem(REMEMBER_LINE_KEY);
+  if (remembered && LINES.includes(remembered)) selline.value = remembered;
+  else selline.value = LINES[0];
+  selline.addEventListener("change", () => {
+    localStorage.setItem(REMEMBER_LINE_KEY, selline.value);
+    inp.focus();
+  });
+
+  // eventos UI
+  btnFS.addEventListener("click", () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  });
+
+  btnExport.addEventListener("click", () => {
+    if (!recent.length) { setStatus(false, "No hay registros para exportar"); return; }
+    const name = `checador_${todayKey()}.csv`;
+    download(name, toCSV(recent));
+  });
+
+  btnClear.addEventListener("click", () => {
+    if (!confirm("¿Borrar registros locales de HOY? (No borra GitHub)")) return;
+    recent = [];
+    lastEvent = {};
+    saveLocalState();
     renderRecent();
-    flashOK("Registros borrados (solo de hoy y esta línea).");
-  }catch{ flashERR("No se pudo borrar."); }
-});
+    setStatus(true, "Registros locales borrados");
+  });
 
-/*** Pantalla completa ***/
-document.getElementById("fs").addEventListener("click", ()=>{
-  if (document.fullscreenElement) document.exitFullscreen();
-  else document.documentElement.requestFullscreen().catch(()=>{});
-});
-
-/*** Init ***/
-(async function init(){
-  populateLines();
-  try{
-    await loadCatalog();
-  }catch(e){
-    console.error(e);
-    flashERR("No pude cargar catalogo.json");
-  }
-  try{
-    await loadAll();
-  }catch(e){
-    console.error(e);
-    ALL = [];
-  }
+  // cargar estado local
+  loadLocalState();
   renderRecent();
-  // autofocus para lector
-  setTimeout(()=>inp.focus(), 100);
+
+  // cargar catálogo
+  loadCatalog().then(()=>{
+    loader.textContent = `Catálogo cargado: ${catalog.length} empleados.`;
+    setTimeout(()=>loader.textContent="", 3000);
+  }).catch(err=>{
+    console.error(err);
+    loader.textContent = "No se pudo cargar el catálogo.";
+    setStatus(false, "Error al cargar catálogo");
+  });
+
+  // manejar escaneo/enter
+  inp.addEventListener("keydown", (ev)=>{
+    if (ev.key === "Enter") {
+      const raw = (inp.value || "").trim();
+      inp.value = "";
+      if (!raw) return;
+      handleScan(raw);
+    }
+  });
+
+  inp.focus();
 })();
+
+/*** Catalog loader ***/
+async function loadCatalog() {
+  const res = await fetch(CATALOGO_URL, { cache: "no-store" });
+  if (!res.ok) throw new Error("HTTP "+res.status);
+  const data = await res.json(); // [{CREDENCIAL:123, NOMBRE_COMPLETO:"..."}]
+  catalog = Array.isArray(data) ? data : [];
+  byId.clear();
+  for (const p of catalog) {
+    const id = String(p.CREDENCIAL ?? p.employee_id ?? "").trim();
+    const name = String(p.NOMBRE_COMPLETO ?? p.name ?? "").trim();
+    if (id) byId.set(id, { name });
+  }
+}
+
+/*** Main handler ***/
+async function handleScan(rawId) {
+  const id = String(rawId).replace(/\D+/g,""); // deja solo dígitos
+  if (!id) { setStatus(false, "ID inválido"); return; }
+
+  const found = byId.get(id);
+  if (!found) { setStatus(false, `No se encontró el ID ${id}`); return; }
+
+  const nombre = found.name || "SIN NOMBRE";
+  const linea = selline.value;
+  const last = lastEvent[id] || null;
+  const nextEvento = (last === "salida") ? "regreso" : "salida";
+  const ts = new Date().toISOString();
+
+  const record = { linea, employee_id: id, nombre, evento: nextEvento, timestamp: ts };
+
+  try {
+    const put = await fetch(WORKER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "append", record })
+    });
+    const ok = put.ok;
+    // opcional: const body = await put.text();
+    if (!ok) throw new Error("Worker respondió: "+put.status);
+
+    // Éxito -> actualiza locales
+    lastEvent[id] = nextEvento;
+    recent.push(record);
+    saveLocalState();
+    renderRecent();
+
+    setStatus(true, `${nextEvento.toUpperCase()} — ${nombre} (${id})`);
+  } catch (err) {
+    console.error(err);
+    setStatus(false, "No se pudo guardar. Reintenta.");
+  }
+}
 </script>
 </body>
 </html>
+
