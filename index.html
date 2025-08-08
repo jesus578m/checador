@@ -6,33 +6,73 @@
 <title>Checador Comida — DL (Multi-líneas)</title>
 <style>
   * { box-sizing: border-box; }
-  html, body { height:100%; }
-  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#0b1220; color:#e5e7eb; display:flex; flex-direction:column; }
-  header { padding:14px 16px; background:#0f172a; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  header h1 { font-size:18px; margin:0; font-weight:700; }
-  .pill { background:#1d4ed8; padding:2px 8px; border-radius:999px; font-size:12px; margin-left:8px; }
-  .wrap { flex:1; display:grid; place-items:center; padding:16px; }
-  .card { width:min(860px, 100%); background:#111827; border:1px solid #1f2937; border-radius:16px; padding:18px; }
-  .topbar { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom:10px; }
-  .group { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  select, button { background:#1f2937; color:#e5e7eb; border:1px solid #374151; padding:8px 12px; border-radius:10px; cursor:pointer; }
-  .prompt { font-size:24px; text-align:center; margin:10px 0 16px; color:#f3f4f6; }
-  #inp { width:100%; font-size:28px; padding:14px 16px; border-radius:12px; border:1px solid #374151; background:#0b1220; color:#f9fafb; text-align:center; outline:none; letter-spacing:1px; }
-  .status { margin-top:16px; padding:16px; border-radius:12px; text-align:center; font-size:20px; font-weight:700; display:none; }
-  .ok { background:#052e1f; color:#a7f3d0; border:1px solid #065f46; }
-  .err { background:#3b0d0d; color:#fecaca; border:1px solid #7f1d1d; }
-  .list { margin-top:14px; background:#0b1220; border:1px solid #1f2937; border-radius:12px; padding:10px; max-height:320px; overflow:auto; }
-  .row { display:grid; grid-template-columns: 92px 1fr 130px 64px; align-items:center; gap:8px; padding:6px 4px; border-bottom:1px dashed #1f2937; font-size:14px; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: #0b1220;
+    color: #e5e7eb;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    padding: 14px 16px;
+    background: #0f172a;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 18px; margin: 0; font-weight: 700; }
+  .pill { background: #1d4ed8; padding: 2px 8px; border-radius: 999px; font-size: 12px; margin-left: 8px; }
+  .wrap { flex: 1; display: grid; place-items: start center; padding: 16px; }
+  .card {
+    width: min(1000px, 100%);
+    background: #111827;
+    border: 1px solid #1f2937;
+    border-radius: 16px;
+    padding: 18px;
+  }
+  .topbar { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  select, button {
+    background: #1f2937; color: #e5e7eb; border: 1px solid #374151;
+    padding: 8px 12px; border-radius: 10px; cursor: pointer;
+  }
+  .prompt { font-size: 20px; text-align: center; margin: 10px 0 12px; color: #f3f4f6; }
+  #inp {
+    width: 100%; font-size: 28px; padding: 12px 14px; border-radius: 12px;
+    border: 1px solid #374151; background: #0b1220; color: #f9fafb; text-align: center; outline: none;
+  }
+  .status { margin-top: 12px; padding: 12px; border-radius: 12px; text-align: center; font-size: 18px; font-weight: 700; }
+  .ok  { background: #052e1f; color: #a7f3d0; border: 1px solid #065f46; }
+  .err { background: #3b0d0d; color: #fecaca; border: 1px solid #7f1d1d; }
+  .muted { color:#9ca3af; }
+
+  .table {
+    margin-top: 14px; background: #0b1220; border: 1px solid #1f2937;
+    border-radius: 12px; overflow: hidden;
+  }
+  .thead, .row {
+    display: grid; grid-template-columns: 120px 1fr 120px 120px; gap: 10px; align-items: center;
+  }
+  .thead {
+    background: #0f172a; padding: 10px 12px; font-weight: 700; border-bottom: 1px solid #1f2937;
+  }
+  .row {
+    padding: 10px 12px; border-bottom: 1px dashed #1f2937; font-size: 14px;
+  }
   .row:last-child { border-bottom: none; }
   .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .logo { height:40px; }
-  .muted { color:#9ca3af; font-size:12px; }
+  .logo { height: 40px; }
+  .small { font-size: 12px; color: #9ca3af; }
 </style>
 </head>
 <body>
 <header>
-  <img src="logo.png" class="logo" alt="Logo">
+  <img src="logo.png" class="logo" alt="Logo TechOps">
   <h1>Checador DL — Comida <span class="pill">Salida / Regreso</span></h1>
+
   <div style="margin-left:auto;" class="group">
     <label for="line">Línea:</label>
     <select id="line"></select>
@@ -45,20 +85,30 @@
 <div class="wrap">
   <div class="card">
     <div class="prompt">Escanea tu tarjeta o escribe tu ID y presiona Enter</div>
-    <input id="inp" placeholder="Escanear aquí…" autocomplete="off" inputmode="numeric" />
-    <div id="status" class="status"></div>
-    <div class="list" id="recent"></div>
-    <div class="muted" id="loader"></div>
+    <input id="inp" placeholder="Escanear aquí…" autocomplete="off" />
+    <div id="status" class="status" style="display:none;"></div>
+
+    <div class="table">
+      <div class="thead">
+        <div>ID</div><div>Nombre</div><div>Salida</div><div>Regreso</div>
+      </div>
+      <div id="recent"></div>
+    </div>
+
+    <div class="small" style="margin-top:8px;">
+      Se actualiza cada 5 segundos. Lo que ves es lo que está en <code>data.json</code>.
+    </div>
   </div>
 </div>
 
 <script>
 /*** CONFIG ***/
-const WORKER_URL = "https://checador.montoyacarrillojesus6.workers.dev/"; // <-- cambia si usas otro
-const CATALOGO_URL = "catalogo.json"; // Debe existir en la misma carpeta
+// Cambia esto si tu worker tiene otra URL:
+const WORKER_URL = "https://checador.montoyacarrillojesus6.workers.dev/";
+const CATALOGO_URL = "catalogo.json";
+const DATA_URL = "data.json";               // archivo en GitHub (lo actualiza tu Worker)
+const REFRESH_INTERVAL = 5000;              // ms
 const REMEMBER_LINE_KEY = "dlc:lastLine";
-const LAST_EVENT_KEY_PREFIX = "dlc:lastEvent:"; // se concatena YYYY-MM-DD
-const RECENTS_KEY_PREFIX   = "dlc:recents:";    // se concatena YYYY-MM-DD
 const LINES = Array.from({length:12}, (_,i)=>`DL${i+1}`);
 
 /*** UI refs ***/
@@ -69,182 +119,129 @@ const recentBox = document.getElementById("recent");
 const btnFS = document.getElementById("fs");
 const btnExport = document.getElementById("export");
 const btnClear = document.getElementById("clearToday");
-const loader = document.getElementById("loader");
 
-/*** State ***/
+/*** Estado ***/
 let catalog = [];
-let byId = new Map(); // id -> {name}
-let recent = [];      // registros de hoy (vista)
-let lastEvent = {};   // { employee_id: "salida"|"regreso" }
+let byId = new Map();
+let lastGrouped = []; // lo que se ve en la tabla (para export)
 
-/*** Utils ***/
-const todayKey = () => new Date().toISOString().slice(0,10);
-const getLastEventKey = () => LAST_EVENT_KEY_PREFIX + todayKey();
-const getRecentsKey   = () => RECENTS_KEY_PREFIX + todayKey();
-
+/*** Utilidades ***/
 function setStatus(ok, msg) {
   statusBox.className = "status " + (ok ? "ok" : "err");
   statusBox.textContent = msg;
   statusBox.style.display = "block";
-  setTimeout(()=>statusBox.style.display="none", 3500);
+  setTimeout(()=>statusBox.style.display="none", 2800);
 }
 
-function saveLocalState() {
-  localStorage.setItem(getLastEventKey(), JSON.stringify(lastEvent));
-  localStorage.setItem(getRecentsKey(), JSON.stringify(recent));
+function todayISO() { return new Date().toISOString().slice(0,10); }
+
+function toHM(d) {
+  try { return new Date(d).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}); }
+  catch(e){ return ""; }
 }
 
-function loadLocalState() {
-  try {
-    lastEvent = JSON.parse(localStorage.getItem(getLastEventKey()) || "{}");
-  } catch { lastEvent = {}; }
-  try {
-    recent = JSON.parse(localStorage.getItem(getRecentsKey()) || "[]");
-  } catch { recent = []; }
-}
-
-function renderRecent() {
+/*** Render tabla agrupada ***/
+function renderRecentGroup(data) {
   recentBox.innerHTML = "";
-  if (!recent.length) {
-    recentBox.innerHTML = `<div class="muted" style="padding:8px;">Sin registros hoy.</div>`;
+  lastGrouped = [];
+
+  if (!data.length) {
+    recentBox.innerHTML = `<div class="row"><div class="muted">—</div><div class="muted">Sin registros en esta línea hoy.</div><div></div><div></div></div>`;
     return;
   }
-  for (const r of recent.slice().reverse()) {
+
+  // Agrupar por empleado y fecha
+  const grupos = {};
+  for (const r of data) {
+    const fecha = r.timestamp.slice(0,10);
+    const key = r.employee_id + "_" + fecha;
+    if (!grupos[key]) {
+      grupos[key] = {
+        id: r.employee_id,
+        nombre: r.nombre,
+        linea: r.linea,
+        salidaISO: "", regresoISO: ""
+      };
+    }
+    if (r.evento === "salida")  grupos[key].salidaISO  = r.timestamp;
+    if (r.evento === "regreso") grupos[key].regresoISO = r.timestamp;
+  }
+
+  const arr = Object.values(grupos)
+    .sort((a,b)=> (a.salidaISO||"") < (b.salidaISO||"") ? 1 : -1);
+
+  for (const g of arr) {
     const row = document.createElement("div");
     row.className = "row";
-    const hhmm = new Date(r.timestamp).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
     row.innerHTML = `
-      <div class="muted">${hhmm}</div>
-      <div><span class="id">${r.employee_id}</span> — ${r.nombre}</div>
-      <div>${r.evento.toUpperCase()}</div>
-      <div>${r.linea}</div>
+      <div class="id">${g.id}</div>
+      <div>${g.nombre}</div>
+      <div>${g.salidaISO ? toHM(g.salidaISO) : "-"}</div>
+      <div>${g.regresoISO ? toHM(g.regresoISO) : "-"}</div>
     `;
     recentBox.appendChild(row);
+
+    lastGrouped.push({
+      id: g.id,
+      nombre: g.nombre,
+      linea: g.linea,
+      salida: g.salidaISO ? toHM(g.salidaISO) : "",
+      regreso: g.regresoISO ? toHM(g.regresoISO) : "",
+      fecha: g.salidaISO ? g.salidaISO.slice(0,10) : todayISO()
+    });
   }
 }
 
-function toCSV(rows) {
-  const header = ["fecha","hora","linea","employee_id","nombre","evento","timestamp"];
-  const lines = [header.join(",")];
-  for (const r of rows) {
-    const d = new Date(r.timestamp);
-    const fecha = d.toISOString().slice(0,10);
-    const hora = d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
-    const row = [
-      fecha,
-      hora,
-      r.linea,
-      `"${(r.employee_id||"").replace(/"/g,'""')}"`,
-      `"${(r.nombre||"").replace(/"/g,'""')}"`,
-      r.evento,
-      r.timestamp
-    ];
-    lines.push(row.join(","));
-  }
-  return lines.join("\n");
-}
-
-function download(filename, text) {
-  const blob = new Blob([text], {type: "text/csv;charset=utf-8"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-/*** Boot ***/
-(function init() {
-  // líneas
-  selline.innerHTML = LINES.map(l=>`<option value="${l}">${l}</option>`).join("");
-  const remembered = localStorage.getItem(REMEMBER_LINE_KEY);
-  if (remembered && LINES.includes(remembered)) selline.value = remembered;
-  else selline.value = LINES[0];
-  selline.addEventListener("change", () => {
-    localStorage.setItem(REMEMBER_LINE_KEY, selline.value);
-    inp.focus();
-  });
-
-  // eventos UI
-  btnFS.addEventListener("click", () => {
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
-    else document.exitFullscreen();
-  });
-
-  btnExport.addEventListener("click", () => {
-    if (!recent.length) { setStatus(false, "No hay registros para exportar"); return; }
-    const name = `checador_${todayKey()}.csv`;
-    download(name, toCSV(recent));
-  });
-
-  btnClear.addEventListener("click", () => {
-    if (!confirm("¿Borrar registros locales de HOY? (No borra GitHub)")) return;
-    recent = [];
-    lastEvent = {};
-    saveLocalState();
-    renderRecent();
-    setStatus(true, "Registros locales borrados");
-  });
-
-  // cargar estado local
-  loadLocalState();
-  renderRecent();
-
-  // cargar catálogo
-  loadCatalog().then(()=>{
-    loader.textContent = `Catálogo cargado: ${catalog.length} empleados.`;
-    setTimeout(()=>loader.textContent="", 3000);
-  }).catch(err=>{
-    console.error(err);
-    loader.textContent = "No se pudo cargar el catálogo.";
-    setStatus(false, "Error al cargar catálogo");
-  });
-
-  // manejar escaneo/enter
-  inp.addEventListener("keydown", (ev)=>{
-    if (ev.key === "Enter") {
-      const raw = (inp.value || "").trim();
-      inp.value = "";
-      if (!raw) return;
-      handleScan(raw);
-    }
-  });
-
-  inp.focus();
-})();
-
-/*** Catalog loader ***/
+/*** Cargar catálogo ***/
 async function loadCatalog() {
-  const res = await fetch(CATALOGO_URL, { cache: "no-store" });
-  if (!res.ok) throw new Error("HTTP "+res.status);
-  const data = await res.json(); // [{CREDENCIAL:123, NOMBRE_COMPLETO:"..."}]
-  catalog = Array.isArray(data) ? data : [];
+  const res = await fetch(CATALOGO_URL + "?t=" + Date.now());
+  const data = await res.json();
+  catalog = data;
   byId.clear();
   for (const p of catalog) {
-    const id = String(p.CREDENCIAL ?? p.employee_id ?? "").trim();
-    const name = String(p.NOMBRE_COMPLETO ?? p.name ?? "").trim();
-    if (id) byId.set(id, { name });
+    // Estructura esperada del catalogo.json:
+    // { "CREDENCIAL": 1814855026, "NOMBRE_COMPLETO": "NOMBRE" }
+    const id = String(p.CREDENCIAL);
+    byId.set(id, { name: p.NOMBRE_COMPLETO });
   }
 }
 
-/*** Main handler ***/
-async function handleScan(rawId) {
-  const id = String(rawId).replace(/\D+/g,""); // deja solo dígitos
-  if (!id) { setStatus(false, "ID inválido"); return; }
-
-  const found = byId.get(id);
-  if (!found) { setStatus(false, `No se encontró el ID ${id}`); return; }
-
-  const nombre = found.name || "SIN NOMBRE";
+/*** Cargar datos globales desde data.json ***/
+async function loadGlobalData() {
+  const res = await fetch(DATA_URL + "?t=" + Date.now(), {cache: "no-store"});
+  const all = await res.json(); // Array de registros
   const linea = selline.value;
-  const last = lastEvent[id] || null;
-  const nextEvento = (last === "salida") ? "regreso" : "salida";
-  const ts = new Date().toISOString();
+  const hoy = todayISO();
+  const filtrados = all.filter(r => r.linea === linea && r.timestamp.startsWith(hoy));
+  renderRecentGroup(filtrados);
+}
 
-  const record = { linea, employee_id: id, nombre, evento: nextEvento, timestamp: ts };
+/*** Decidir S/R con base en lo último del día ***/
+async function nextEvento(id) {
+  const res = await fetch(DATA_URL + "?t=" + Date.now());
+  const all = await res.json();
+  const hoy = todayISO();
+  const personaHoy = all.filter(r => r.employee_id === id && r.timestamp.startsWith(hoy));
+  const ultimo = personaHoy.sort((a,b)=>a.timestamp<b.timestamp?1:-1)[0];
+  return (!ultimo || ultimo.evento === "regreso") ? "salida" : "regreso";
+}
+
+/*** Manejar escaneo ***/
+async function handleScan(rawId) {
+  const id = String(rawId).replace(/\D+/g,"");
+  if (!id) { setStatus(false, "ID inválido"); return; }
+  const found = byId.get(id);
+  if (!found) { setStatus(false, `No encontrado: ${id}`); return; }
+
+  const ev = await nextEvento(id);
+
+  const record = {
+    linea: selline.value,
+    employee_id: id,
+    nombre: found.name,
+    evento: ev,
+    timestamp: new Date().toISOString()
+  };
 
   try {
     const put = await fetch(WORKER_URL, {
@@ -252,23 +249,98 @@ async function handleScan(rawId) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "append", record })
     });
-    const ok = put.ok;
-    // opcional: const body = await put.text();
-    if (!ok) throw new Error("Worker respondió: "+put.status);
-
-    // Éxito -> actualiza locales
-    lastEvent[id] = nextEvento;
-    recent.push(record);
-    saveLocalState();
-    renderRecent();
-
-    setStatus(true, `${nextEvento.toUpperCase()} — ${nombre} (${id})`);
-  } catch (err) {
-    console.error(err);
-    setStatus(false, "No se pudo guardar. Reintenta.");
+    if (!put.ok) throw new Error("Worker respondió error");
+    setStatus(true, `${ev.toUpperCase()} — ${found.name}`);
+    loadGlobalData();
+  } catch (e) {
+    console.error(e);
+    setStatus(false, "No se pudo guardar");
   }
 }
+
+/*** Exportar CSV de lo visible ***/
+function exportCSV() {
+  if (!lastGrouped.length) { setStatus(false, "Nada que exportar"); return; }
+  const header = ["Linea","ID","Nombre","Fecha","Salida","Regreso"];
+  const rows = lastGrouped.map(r => [r.linea, r.id, `"${r.nombre.replace(/"/g,'""')}"`, r.fecha, r.salida, r.regreso]);
+  const csv = [header, ...rows].map(r => r.join(",")).join("\n");
+  const blob = new Blob([csv], {type: "text/csv;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const hoy = todayISO();
+  a.download = `checador_${selline.value}_${hoy}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/*** Borrar HOY de la línea actual ***/
+async function clearTodayForLine() {
+  if (!confirm(`¿Borrar los registros de HOY para ${selline.value}?`)) return;
+  try {
+    // 1) Traer todo
+    const res = await fetch(DATA_URL + "?t=" + Date.now());
+    const all = await res.json();
+    const hoy = todayISO();
+
+    // 2) Filtrar (quitamos los de HOY de esta línea)
+    const kept = all.filter(r => !(r.linea === selline.value && r.timestamp.startsWith(hoy)));
+
+    // 3) Guardar reemplazando en el worker
+    const put = await fetch(WORKER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "replace", data: kept })
+    });
+    if (!put.ok) throw new Error("Worker respondió error");
+
+    setStatus(true, `Registros de hoy borrados en ${selline.value}`);
+    loadGlobalData();
+  } catch (e) {
+    console.error(e);
+    setStatus(false, "No se pudo borrar");
+  }
+}
+
+/*** Fullscreen ***/
+function toggleFullscreen() {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
+  else document.exitFullscreen();
+}
+
+/*** Inicio ***/
+(async function init() {
+  // llenar líneas
+  selline.innerHTML = LINES.map(l=>`<option value="${l}">${l}</option>`).join("");
+  selline.value = localStorage.getItem(REMEMBER_LINE_KEY) || LINES[0];
+  selline.addEventListener("change",()=>{
+    localStorage.setItem(REMEMBER_LINE_KEY, selline.value);
+    loadGlobalData();
+  });
+
+  // cargar catálogo
+  await loadCatalog();
+
+  // escaneo
+  inp.addEventListener("keydown", e=>{
+    if (e.key === "Enter") {
+      const val = inp.value.trim();
+      inp.value = "";
+      handleScan(val);
+    }
+  });
+
+  // botones
+  btnFS.addEventListener("click", toggleFullscreen);
+  btnExport.addEventListener("click", exportCSV);
+  btnClear.addEventListener("click", clearTodayForLine);
+
+  // actualizar cada X segundos
+  await loadGlobalData();
+  setInterval(loadGlobalData, REFRESH_INTERVAL);
+})();
 </script>
 </body>
 </html>
+
 
