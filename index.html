@@ -13,10 +13,12 @@
   header { padding:14px 16px; background:#0f172a; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   header h1 { font-size:18px; margin:0; font-weight:700; }
   .pill { background:#1d4ed8; padding:2px 8px; border-radius:999px; font-size:12px; margin-left:8px; }
+
   .wrap { flex:1; display:grid; place-items:center; padding:16px; }
   .card { width:min(1200px, 100%); background:#111827; border:1px solid #1f2937; border-radius:16px; padding:18px; }
   .prompt { font-size:22px; text-align:center; margin:6px 0 12px; color:#f3f4f6; }
   #inp { width:100%; font-size:26px; padding:12px 16px; border-radius:12px; border:1px solid #374151; background:#0b1220; color:#f9fafb; text-align:center; outline:none; letter-spacing:1px; }
+
   .status { margin-top:12px; padding:12px; border-radius:12px; text-align:center; font-size:16px; font-weight:700; display:none; }
   .ok { background:#052e1f; color:#a7f3d0; border:1px solid #065f46; }
   .err { background:#3b0d0d; color:#fecaca; border:1px solid #7f1d1d; }
@@ -37,12 +39,16 @@
   .dur{font-variant-numeric:tabular-nums; font-weight:600}
   .flag{font-size:16px; line-height:1; color:#fbbf24; filter: drop-shadow(0 0 2px rgba(251,191,36,.5)); } /* ⚠️ */
 
-  .charts { display:grid; grid-template-columns: repeat(12, 1fr); gap:12px; margin-top:14px; }
+  /* Charts al final */
+  .charts { display:grid; grid-template-columns: repeat(12, 1fr); gap:12px; margin-top:18px; }
   .chart-card { grid-column: span 12; background:#0f172a; border:1px solid #1f2937; border-radius:12px; padding:12px; }
   @media (min-width: 900px){
     .chart-card.sm-4 { grid-column: span 4; }
     .chart-card.sm-8 { grid-column: span 8; }
   }
+
+  /* Separador visual */
+  .divider { height:1px; background:#1f2937; margin:16px 0; border-radius:999px; }
 </style>
 </head>
 <body>
@@ -66,29 +72,18 @@
   <div class="right tools">
     <button id="fs">Pantalla completa</button>
     <button id="export">Exportar CSV</button>
+    <button id="refreshCharts">Actualizar gráficas</button>
   </div>
 </header>
 
 <div class="wrap">
   <div class="card">
+    <!-- 1) Escáner -->
     <div class="prompt">Escanea tu tarjeta o escribe tu ID y presiona Enter</div>
     <input id="inp" placeholder="Escanear aquí…" autocomplete="off" inputmode="numeric" />
     <div id="status" class="status"></div>
 
-    <!-- CHARTS -->
-    <div class="charts">
-      <div class="chart-card sm-4">
-        <canvas id="chartBuckets"></canvas>
-      </div>
-      <div class="chart-card sm-8">
-        <canvas id="chartCompliance"></canvas>
-      </div>
-      <div class="chart-card">
-        <canvas id="chartAvg"></canvas>
-      </div>
-    </div>
-
-    <!-- TABLE -->
+    <!-- 2) Historial (tabla) — queda arriba -->
     <table>
       <thead>
         <tr>
@@ -104,7 +99,22 @@
     </table>
 
     <div class="muted" id="loader"></div>
-    <div class="muted">Se sincroniza cada 2 segundos con <code>data.json</code>. Los gráficos se recalculan con el rango y la línea seleccionada.</div>
+    <div class="muted">Se sincroniza cada 2 segundos con <code>data.json</code>. Las <b>gráficas</b> se actualizan únicamente al presionar <i>Actualizar gráficas</i>.</div>
+
+    <div class="divider"></div>
+
+    <!-- 3) Gráficas — siempre hasta abajo -->
+    <div class="charts">
+      <div class="chart-card sm-4">
+        <canvas id="chartBuckets"></canvas>
+      </div>
+      <div class="chart-card sm-8">
+        <canvas id="chartCompliance"></canvas>
+      </div>
+      <div class="chart-card">
+        <canvas id="chartAvg"></canvas>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -117,7 +127,7 @@ const REMEMBER_LINE_KEY = "dlc:lastLine";
 const REMEMBER_FROM_KEY = "dlc:fromDate";
 const REMEMBER_TO_KEY   = "dlc:toDate";
 const LINES = Array.from({length:12}, (_,i)=>`DL${i+1}`);
-const MAX_OK = 70; // cumple si duracion <= 70
+const MAX_OK = 70; // alerta sólo si >70
 
 /*** UI refs ***/
 const selline   = document.getElementById("line");
@@ -129,17 +139,19 @@ const statusBox = document.getElementById("status");
 const loader    = document.getElementById("loader");
 const btnFS     = document.getElementById("fs");
 const btnExport = document.getElementById("export");
+const btnRefreshCharts = document.getElementById("refreshCharts");
 const tbody     = document.getElementById("tbody");
 
 /*** State ***/
 let catalog = [];
 let byId = new Map();
-let sessions = [];
+let sessions = [];      // para la tabla (se actualiza cada 2s)
 let rawData = [];
 let pollTimer = null;
 
 // charts
 let chartBuckets, chartCompliance, chartAvg;
+let chartsFrozenData = null; // “foto” de los datos que alimentan las gráficas
 
 /*** Utils ***/
 const pad = n => String(n).padStart(2,"0");
@@ -178,16 +190,17 @@ async function init(){
   fromDate.value = localStorage.getItem(REMEMBER_FROM_KEY) || todayISO();
   toDate.value   = localStorage.getItem(REMEMBER_TO_KEY)   || todayISO();
 
-  selline.addEventListener("change", ()=>{ localStorage.setItem(REMEMBER_LINE_KEY, selline.value); applyFilters(); });
-  fromDate.addEventListener("change", ()=>{ localStorage.setItem(REMEMBER_FROM_KEY, fromDate.value); applyFilters(); });
-  toDate.addEventListener("change",   ()=>{ localStorage.setItem(REMEMBER_TO_KEY,   toDate.value);   applyFilters(); });
+  // cambios en filtros NO tocan las gráficas automáticamente
+  selline.addEventListener("change", ()=>{ localStorage.setItem(REMEMBER_LINE_KEY, selline.value); applyFiltersForTableOnly(); });
+  fromDate.addEventListener("change", ()=>{ localStorage.setItem(REMEMBER_FROM_KEY, fromDate.value); applyFiltersForTableOnly(); });
+  toDate.addEventListener("change",   ()=>{ localStorage.setItem(REMEMBER_TO_KEY,   toDate.value);   applyFiltersForTableOnly(); });
 
   todayBtn.addEventListener("click", ()=>{
     const t = todayISO();
     fromDate.value = t; toDate.value = t;
     localStorage.setItem(REMEMBER_FROM_KEY, t);
     localStorage.setItem(REMEMBER_TO_KEY, t);
-    applyFilters();
+    applyFiltersForTableOnly();
   });
 
   btnFS.addEventListener("click", () => {
@@ -195,11 +208,17 @@ async function init(){
     else document.exitFullscreen();
   });
   btnExport.addEventListener("click", downloadCSV);
+  btnRefreshCharts.addEventListener("click", () => {
+    // congelamos las gráficas con la foto actual de sesiones
+    chartsFrozenData = sessions.slice();
+    drawChartsFrom(chartsFrozenData);
+    setStatus(true, "Gráficas actualizadas");
+  });
 
   // catálogo
   await loadCatalog();
 
-  // primera carga + polling
+  // primera carga + polling (sólo tabla)
   await refresh();
   pollTimer = setInterval(refresh, 2000);
 
@@ -228,19 +247,19 @@ async function loadCatalog(){
   }catch(e){ loader.textContent="Error al cargar catálogo."; }
 }
 
-/*** Data refresh ***/
+/*** Data refresh (para la TABLA) ***/
 async function refresh(){
   try{
     const res=await fetch(DATA_URL+"?t="+Date.now(),{cache:"no-store"});
     rawData=await res.json();
-    applyFilters();
+    applyFiltersForTableOnly();
   }catch(e){ setStatus(false,"No se pudo leer data.json"); }
 }
 
-function applyFilters(){
+function applyFiltersForTableOnly(){
   sessions = buildSessions(rawData, selline.value, fromDate.value, toDate.value);
-  render();
-  drawChartsFrom(sessions);
+  renderTable();
+  // Importante: NO tocamos las gráficas aquí
 }
 
 /*** Build sessions (múltiples por empleado/día) ***/
@@ -248,7 +267,7 @@ function buildSessions(raw,line,from,to){
   const result=[];
   if(!Array.isArray(raw)) return result;
 
-  // A) Formato consolidado directo (por si existe)
+  // Consolidado directo (si existiera)
   for(const r of raw){
     if(r && r.date && r.linea && r.employee_id){
       if(r.linea!==line) continue;
@@ -261,7 +280,7 @@ function buildSessions(raw,line,from,to){
     }
   }
 
-  // B) Formato por evento
+  // Por evento
   const bucket=new Map(); // key: d|line|id
   for(const r of raw){
     if(!(r && r.timestamp && r.linea && r.employee_id && r.evento)) continue;
@@ -281,9 +300,7 @@ function buildSessions(raw,line,from,to){
       const name = String(ev.nombre || ev.name || byId.get(id)?.name || "");
       lastName=name || lastName;
       if(type==="salida"){
-        if(lastOut){ // cerrar sesión incompleta anterior
-          result.push({date:d, linea:ln, employee_id:id, name:lastName, out:lastOut, back:null});
-        }
+        if(lastOut){ result.push({date:d, linea:ln, employee_id:id, name:lastName, out:lastOut, back:null}); }
         lastOut=ev.timestamp;
       }else if(type==="regreso"){
         if(lastOut){
@@ -309,7 +326,7 @@ function buildSessions(raw,line,from,to){
 }
 
 /*** Render tabla ***/
-function render(){
+function renderTable(){
   const rows=sessions;
   if(!rows.length){
     tbody.innerHTML=`<tr><td colspan="6" style="text-align:center;opacity:.7">Sin registros para el rango seleccionado.</td></tr>`;
@@ -330,12 +347,11 @@ function render(){
   }).join("");
 }
 
-/*** Charts ***/
+/*** Charts (sólo al presionar “Actualizar gráficas”) ***/
 function drawChartsFrom(rows){
   // buckets globales
   let ok=0, tol=0, over=0, inc=0;
-  // por día
-  const dayStats = new Map(); // date -> { total, ok, over, inc, avgDurSum, avgCount }
+  const dayStats = new Map(); // date -> { total, ok(≤70), over(>70), inc, avgDurSum, avgCount }
 
   for(const r of rows){
     const d=r.date;
@@ -345,15 +361,14 @@ function drawChartsFrom(rows){
     ds.total++;
 
     if(mins==null){ inc++; ds.inc++; }
-    else if(mins<=60){ ok++; ds.ok++; ds.avgDurSum+=mins; ds.avgCount++; }
-    else if(mins<=MAX_OK){ tol++; ds.ok++; ds.avgDurSum+=mins; ds.avgCount++; } // se considera cumplimiento (≤70)
+    else if(mins<=MAX_OK){ ok++; ds.ok++; ds.avgDurSum+=mins; ds.avgCount++; }
     else { over++; ds.over++; ds.avgDurSum+=mins; ds.avgCount++; }
   }
 
-  // --- Chart 1: Buckets (doughnut) ---
+  // Chart 1: Buckets
   const bucketsData = {
-    labels: ["≤ 60 min", "61–70 min", "> 70 min", "Incompletas"],
-    datasets: [{ data: [ok - tol, tol, over, inc] }]
+    labels: ["≤ 70 min", "> 70 min", "Incompletas"],
+    datasets: [{ data: [ok, over, inc] }]
   };
   if(chartBuckets){ chartBuckets.data=bucketsData; chartBuckets.update(); }
   else {
@@ -366,12 +381,11 @@ function drawChartsFrom(rows){
     });
   }
 
-  // --- Chart 2: Cumplimiento por día (barra % ok) ---
+  // Chart 2: % Cumplimiento por día
   const days = Array.from(dayStats.keys()).sort();
   const pct = days.map(d=>{
     const ds=dayStats.get(d);
-    const good = ds.ok; // ≤70
-    return ds.total ? Math.round(good*100/ds.total) : 0;
+    return ds.total ? Math.round(ds.ok*100/ds.total) : 0;
   });
   const complianceData = {
     labels: days,
@@ -389,7 +403,7 @@ function drawChartsFrom(rows){
     });
   }
 
-  // --- Chart 3: Duración promedio por día (línea) ---
+  // Chart 3: Promedio por día
   const avg = days.map(d=>{
     const ds=dayStats.get(d);
     return ds.avgCount? Math.round(ds.avgDurSum/ds.avgCount) : null;
@@ -431,7 +445,7 @@ async function handleScan(rawId){
     if(!put.ok) throw new Error();
     setStatus(true,`${next.toUpperCase()} — ${found.name} (${id})`);
     if(fromDate.value!==t||toDate.value!==t){ fromDate.value=t; toDate.value=t; }
-    await refresh();
+    await refresh(); // sólo tabla
   }catch(e){ setStatus(false,"No se pudo guardar"); }
 }
 
@@ -452,6 +466,7 @@ function downloadCSV(){
 </script>
 </body>
 </html>
+
 
 
 
