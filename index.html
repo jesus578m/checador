@@ -12,7 +12,7 @@
   header h1 { font-size:18px; margin:0; font-weight:700; }
   .pill { background:#1d4ed8; padding:2px 8px; border-radius:999px; font-size:12px; margin-left:8px; }
   .wrap { flex:1; display:grid; place-items:center; padding:16px; }
-  .card { width:min(1000px, 100%); background:#111827; border:1px solid #1f2937; border-radius:16px; padding:18px; }
+  .card { width:min(1100px, 100%); background:#111827; border:1px solid #1f2937; border-radius:16px; padding:18px; }
   .prompt { font-size:24px; text-align:center; margin:10px 0 16px; color:#f3f4f6; }
   #inp { width:100%; font-size:28px; padding:14px 16px; border-radius:12px; border:1px solid #374151; background:#0b1220; color:#f9fafb; text-align:center; outline:none; letter-spacing:1px; }
   .status { margin-top:16px; padding:16px; border-radius:12px; text-align:center; font-size:20px; font-weight:700; display:none; }
@@ -21,7 +21,8 @@
   .muted { color:#9ca3af; font-size:12px; }
 
   .tools { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:8px 0 14px; }
-  select, button { background:#1f2937; color:#e5e7eb; border:1px solid #374151; padding:8px 12px; border-radius:10px; cursor:pointer; }
+  select, button, input[type="date"] { background:#1f2937; color:#e5e7eb; border:1px solid #374151; padding:8px 12px; border-radius:10px; cursor:pointer; }
+  input[type="date"] { padding:7px 10px; }
 
   table{width:100%; border-collapse:collapse; overflow:hidden; border-radius:12px; border:1px solid #1f2937; margin-top:8px;}
   thead th{background:#0f172a; font-weight:700; text-align:left; font-size:14px; padding:10px}
@@ -38,6 +39,13 @@
   <div class="right tools">
     <label for="line">Línea:</label>
     <select id="line"></select>
+
+    <label for="fromDate">Desde:</label>
+    <input id="fromDate" type="date"/>
+    <label for="toDate">Hasta:</label>
+    <input id="toDate" type="date"/>
+    <button id="todayBtn">Hoy</button>
+
     <button id="fs">Pantalla completa</button>
     <button id="export">Exportar CSV</button>
   </div>
@@ -56,14 +64,14 @@
           <th>Nombre</th>
           <th style="width:150px">Salida</th>
           <th style="width:150px">Regreso</th>
-          <th style="width:160px">Total</th> <!-- NUEVO -->
+          <th style="width:160px">Total</th>
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
     </table>
 
     <div class="muted" id="loader"></div>
-    <div class="muted">Se sincroniza cada 1 segundos con <code>data.json</code>.</div>
+    <div class="muted">Se sincroniza cada 5 segundos con <code>data.json</code>.</div>
   </div>
 </div>
 
@@ -73,14 +81,16 @@ const WORKER_URL   = "https://checador.montoyacarrillojesus6.workers.dev/";
 const DATA_URL     = "https://raw.githubusercontent.com/jesus578m/checador/main/data.json"; 
 const CATALOGO_URL = "catalogo.json"; 
 const REMEMBER_LINE_KEY = "dlc:lastLine";
-const LAST_EVENT_KEY_PREFIX = "dlc:lastEvent:"; 
+const REMEMBER_FROM_KEY = "dlc:fromDate";
+const REMEMBER_TO_KEY   = "dlc:toDate";
 const LINES = Array.from({length:12}, (_,i)=>`DL${i+1}`);
-
-// --- configuración de tolerancia ---
-const MAX_OK = 70; // alerta solo si es MAYOR a 70 min
+const MAX_OK = 70; // minutos tolerancia
 
 /*** UI refs ***/
 const selline   = document.getElementById("line");
+const fromDate  = document.getElementById("fromDate");
+const toDate    = document.getElementById("toDate");
+const todayBtn  = document.getElementById("todayBtn");
 const inp       = document.getElementById("inp");
 const statusBox = document.getElementById("status");
 const loader    = document.getElementById("loader");
@@ -89,16 +99,14 @@ const btnExport = document.getElementById("export");
 const tbody     = document.getElementById("tbody");
 
 /*** State ***/
-let catalog = [];           
-let byId = new Map();       
-let tableRows = [];         
-let lastEventLocal = {};    
+let catalog = [];
+let byId = new Map();
+let sessions = [];
+let rawData = [];
 let pollTimer = null;
 
 /*** Utils ***/
 const todayISO = () => new Date().toISOString().slice(0,10);
-const LEKey = () => LAST_EVENT_KEY_PREFIX + todayISO();
-
 function setStatus(ok, msg) {
   statusBox.className = "status " + (ok ? "ok" : "err");
   statusBox.textContent = msg;
@@ -108,210 +116,151 @@ function setStatus(ok, msg) {
 }
 function esc(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m])); }
 function fmtTime(ts){
-  try {
-    const d = typeof ts === "number" ? new Date(ts) : new Date(String(ts));
-    if (isNaN(d)) return "";
-    return d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
-  } catch { return ""; }
+  const d = new Date(ts);
+  if (isNaN(d)) return "";
+  return d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
 }
-function minsBetween(a, b){
-  if(!a || !b) return null;
-  const t1 = +new Date(a), t2 = +new Date(b);
-  if(isNaN(t1) || isNaN(t2)) return null;
-  return Math.round((t2 - t1) / 60000);
-}
-function fmtHM(mins){
-  if(mins == null) return "";
-  const h = Math.floor(mins/60), m = mins % 60;
-  return String(h).padStart(2,'0') + ":" + String(m).padStart(2,'0');
-}
+function minsBetween(a,b){ if(!a||!b) return null; return Math.round((new Date(b)-new Date(a))/60000); }
+function fmtHM(mins){ if(mins==null) return ""; return String(Math.floor(mins/60)).padStart(2,"0")+":"+String(mins%60).padStart(2,"0"); }
 
 /*** Boot ***/
 init();
 async function init(){
   selline.innerHTML = LINES.map(l=>`<option value="${l}">${l}</option>`).join("");
-  const remembered = localStorage.getItem(REMEMBER_LINE_KEY);
-  selline.value = (remembered && LINES.includes(remembered)) ? remembered : LINES[0];
+  selline.value = localStorage.getItem(REMEMBER_LINE_KEY) || LINES[0];
+  fromDate.value = localStorage.getItem(REMEMBER_FROM_KEY) || todayISO();
+  toDate.value   = localStorage.getItem(REMEMBER_TO_KEY) || todayISO();
+
   selline.addEventListener("change", ()=>{ localStorage.setItem(REMEMBER_LINE_KEY, selline.value); render(); });
+  fromDate.addEventListener("change", ()=>{ localStorage.setItem(REMEMBER_FROM_KEY, fromDate.value); render(); });
+  toDate.addEventListener("change", ()=>{ localStorage.setItem(REMEMBER_TO_KEY, toDate.value); render(); });
 
-  btnFS.addEventListener("click", () => {
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
-    else document.exitFullscreen();
+  todayBtn.addEventListener("click", ()=>{
+    const t = todayISO();
+    fromDate.value = t; toDate.value = t;
+    localStorage.setItem(REMEMBER_FROM_KEY, t);
+    localStorage.setItem(REMEMBER_TO_KEY, t);
+    render();
   });
-  btnExport.addEventListener("click", downloadCSV);
 
-  try { lastEventLocal = JSON.parse(localStorage.getItem(LEKey())||"{}"); } catch { lastEventLocal = {}; }
+  btnFS.addEventListener("click", ()=>{ if (!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen(); });
+  btnExport.addEventListener("click", downloadCSV);
 
   await loadCatalog();
   await refresh();
-  pollTimer = setInterval(refresh, 1000);
+  pollTimer = setInterval(refresh, 5000);
 
-  inp.addEventListener("keydown", (ev)=>{
-    if (ev.key === "Enter") {
-      const raw = (inp.value||"").trim(); inp.value = "";
-      if (raw) handleScan(raw);
-    }
-  });
+  inp.addEventListener("keydown", (ev)=>{ if(ev.key==="Enter"){ const raw=(inp.value||"").trim(); inp.value=""; if(raw) handleScan(raw); } });
   inp.focus();
 }
 
 /*** Catalog loader ***/
-async function loadCatalog() {
-  loader.textContent = "Cargando catálogo…";
-  try {
-    const res = await fetch(CATALOGO_URL, { cache: "no-store" });
-    const arr = await res.json();
-    catalog = (Array.isArray(arr) ? arr : []).map(x => ({
-      employee_id: String(x.CREDENCIAL ?? x.employee_id ?? "").trim(),
-      name: String(x.NOMBRE_COMPLETO ?? x.name ?? "").trim()
-    })).filter(p=>p.employee_id && p.name);
-    byId.clear();
-    for (const p of catalog) byId.set(p.employee_id, { name: p.name });
-    loader.textContent = `Catálogo cargado: ${catalog.length} empleados.`;
-    setTimeout(()=>loader.textContent="", 2500);
-  } catch (e) {
-    console.error(e);
-    loader.textContent = "No se pudo cargar el catálogo.";
-    setStatus(false, "Error al cargar catálogo");
-  }
+async function loadCatalog(){
+  loader.textContent="Cargando catálogo…";
+  try{
+    const res=await fetch(CATALOGO_URL,{cache:"no-store"});
+    const arr=await res.json();
+    catalog=arr.map(x=>({employee_id:String(x.CREDENCIAL||x.employee_id||"").trim(), name:String(x.NOMBRE_COMPLETO||x.name||"").trim()})).filter(p=>p.employee_id&&p.name);
+    byId.clear(); for(const p of catalog) byId.set(p.employee_id,{name:p.name});
+    loader.textContent=`Catálogo cargado: ${catalog.length} empleados.`; setTimeout(()=>loader.textContent="",2500);
+  }catch(e){ loader.textContent="Error al cargar catálogo."; }
 }
 
 /*** Data refresh ***/
-async function refresh() {
-  try {
-    const res = await fetch(DATA_URL + "?_=" + Date.now(), { cache: "no-store" });
-    const text = await res.text();
-    const json = JSON.parse(text || "[]");
-    tableRows = consolidateToday(json, selline.value);
+async function refresh(){
+  try{
+    const res=await fetch(DATA_URL+"?t="+Date.now(),{cache:"no-store"});
+    rawData=await res.json();
+    sessions=buildSessions(rawData, selline.value, fromDate.value, toDate.value);
     render();
-  } catch (e) {
-    console.error("No se pudo leer data.json", e);
-    setStatus(false, "No se pudo leer data.json");
-  }
+  }catch(e){ setStatus(false,"No se pudo leer data.json"); }
 }
 
-/*** Consolidación ***/
-function consolidateToday(raw, line) {
-  const today = todayISO();
-  const map = new Map();
-
-  for (const r of Array.isArray(raw) ? raw : []) {
-    if (r && r.date && r.linea && r.employee_id) {
-      if (r.date !== today || r.linea !== line) continue;
-      const id = String(r.employee_id);
-      const name = String(r.name || byId.get(id)?.name || "");
-      const row = map.get(id) || { employee_id:id, name, linea:line, date:today, out:null, back:null };
-      if (r.out)  row.out  = r.out;
-      if (r.back) row.back = r.back;
-      map.set(id, row);
-      continue;
-    }
-    if (r && r.timestamp && r.linea && r.employee_id && r.evento) {
-      const d = new Date(r.timestamp);
-      const dISO = isNaN(d)? null : d.toISOString().slice(0,10);
-      if (dISO !== today || r.linea !== line) continue;
-      const id = String(r.employee_id);
-      const name = String(r.nombre || r.name || byId.get(id)?.name || "");
-      const row = map.get(id) || { employee_id:id, name, linea:line, date:today, out:null, back:null };
-      if (String(r.evento).toLowerCase() === "salida")  row.out  = r.timestamp;
-      if (String(r.evento).toLowerCase() === "regreso") row.back = r.timestamp;
-      map.set(id, row);
+/*** Build sessions ***/
+function buildSessions(raw,line,from,to){
+  const events=[];
+  for(const r of raw){
+    if(r.timestamp && r.linea===line){
+      const dISO=new Date(r.timestamp).toISOString().slice(0,10);
+      if(dISO<from||dISO>to) continue;
+      const type=String(r.evento).toLowerCase()==="regreso"?"regreso":"salida";
+      events.push({ts:r.timestamp,type,id:String(r.employee_id),name:r.nombre||byId.get(r.employee_id)?.name||"",date:dISO});
     }
   }
-  return Array.from(map.values()).sort((a,b)=> (a.name||"").localeCompare(b.name||""));
+  const byEmp=new Map();
+  for(const e of events){ if(!byEmp.has(e.id)) byEmp.set(e.id,[]); byEmp.get(e.id).push(e); }
+  const result=[];
+  for(const [id,list] of byEmp){
+    list.sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+    let open=null;
+    for(const e of list){
+      if(e.type==="salida"){ if(open) result.push({employee_id:id,name:open.name,date:open.date,out:open.ts,back:null});
+        open=e;
+      }else{ if(open){ result.push({employee_id:id,name:open.name,date:open.date,out:open.ts,back:e.ts}); open=null; }
+             else{ result.push({employee_id:id,name:e.name,date:e.date,out:null,back:e.ts}); }
+      }
+    }
+    if(open) result.push({employee_id:id,name:open.name,date:open.date,out:open.ts,back:null});
+  }
+  return result.sort((a,b)=>a.name.localeCompare(b.name)||new Date(a.out||a.back)-new Date(b.out||b.back));
 }
 
-/*** Render tabla ***/
-function render() {
-  const rows = tableRows;
-  if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="5" style="opacity:.7; text-align:center; padding:14px">
-      No hay registros para hoy en <b>${esc(selline.value)}</b>.
-    </td></tr>`;
-    return;
-  }
-  tbody.innerHTML = rows.map(r=>{
-    const mins = minsBetween(r.out, r.back);
-    const ok = mins!=null ? (mins <= MAX_OK) : true;
-    const total = mins!=null
-      ? `<span class="time" title="${mins} min">${fmtHM(mins)}${ok ? "" : " ⚠️"}</span>`
-      : "";
-    return `
-      <tr>
-        <td class="id">${esc(r.employee_id)}</td>
-        <td>${esc(r.name||"")}</td>
-        <td class="time">${r.out ? fmtTime(r.out) : ""}</td>
-        <td class="time">${r.back ? fmtTime(r.back) : ""}</td>
-        <td>${total}</td>
-      </tr>
-    `;
+/*** Render ***/
+function render(){
+  const rows=sessions;
+  if(!rows.length){ tbody.innerHTML=`<tr><td colspan="5" style="text-align:center;opacity:.7">Sin registros para rango</td></tr>`; return; }
+  tbody.innerHTML=rows.map(r=>{
+    const mins=minsBetween(r.out,r.back);
+    const ok=mins!=null?(mins<=MAX_OK):true;
+    const total=mins!=null?`${fmtHM(mins)}${ok?"":" ⚠️"}`:"";
+    return `<tr>
+      <td class="id">${esc(r.employee_id)}</td>
+      <td>${esc(r.name)}</td>
+      <td class="time">${r.out?fmtTime(r.out):""}</td>
+      <td class="time">${r.back?fmtTime(r.back):""}</td>
+      <td>${total}</td>
+    </tr>`;
   }).join("");
 }
 
-/*** Escaneo / alta ***/
-async function handleScan(rawId) {
-  const id = String(rawId).replace(/\D+/g,"");
-  if (!id) { setStatus(false, "ID inválido"); return; }
-
-  const found = byId.get(id);
-  if (!found) { setStatus(false, `No se encontró el ID ${id}`); return; }
-
-  const nombre = found.name || "SIN NOMBRE";
-  const linea = selline.value;
-
-  const row = tableRows.find(r => r.employee_id === id);
-  let nextEvento;
-  if (row && row.out && !row.back) nextEvento = "regreso";
-  else nextEvento = "salida";
-  if (!row && lastEventLocal[id] === "salida") nextEvento = "regreso";
-
-  const record = { linea, employee_id: id, nombre, evento: nextEvento, timestamp: new Date().toISOString() };
-
-  try {
-    const put = await fetch(WORKER_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "append", record })
-    });
-    if (!put.ok) throw new Error("Worker " + put.status);
-    lastEventLocal[id] = nextEvento;
-    localStorage.setItem(LEKey(), JSON.stringify(lastEventLocal));
-    setStatus(true, `${nextEvento.toUpperCase()} — ${nombre} (${id})`);
+/*** Scan handler ***/
+async function handleScan(rawId){
+  const id=String(rawId).replace(/\D+/g,"");
+  if(!id) return setStatus(false,"ID inválido");
+  const found=byId.get(id);
+  if(!found) return setStatus(false,`No se encontró ${id}`);
+  const linea=selline.value;
+  const today=todayISO();
+  const todaySessions=buildSessions(rawData,linea,today,today).filter(s=>s.employee_id===id);
+  let next="salida";
+  if(todaySessions.length && todaySessions[todaySessions.length-1].out && !todaySessions[todaySessions.length-1].back) next="regreso";
+  const record={linea,employee_id:id,nombre:found.name,evento:next,timestamp:new Date().toISOString()};
+  try{
+    const put=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"append",record})});
+    if(!put.ok) throw new Error();
+    setStatus(true,`${next.toUpperCase()} — ${found.name} (${id})`);
+    if(fromDate.value!==today||toDate.value!==today){ fromDate.value=today; toDate.value=today; }
     await refresh();
-  } catch (err) {
-    console.error(err);
-    setStatus(false, "No se pudo guardar. Reintenta.");
-  }
+  }catch(e){ setStatus(false,"No se pudo guardar"); }
 }
 
 /*** CSV ***/
 function downloadCSV(){
-  const rows = tableRows;
-  if (!rows.length) { setStatus(false, "No hay registros para exportar"); return; }
-  const head = ["fecha","linea","employee_id","nombre","salida","regreso","total_min"];
-  const lines = [head.join(",")];
-  for (const r of rows) {
-    const mins = minsBetween(r.out, r.back);
-    const row = [
-      r.date, r.linea, r.employee_id,
-      `"${String(r.name||"").replace(/"/g,'""')}"`,
-      r.out ? fmtTime(r.out) : "", r.back ? fmtTime(r.back) : "",
-      mins!=null ? mins : ""
-    ];
-    lines.push(row.join(","));
+  if(!sessions.length) return setStatus(false,"No hay datos");
+  const head=["fecha","employee_id","nombre","salida","regreso","total_min"];
+  const lines=[head.join(",")];
+  for(const r of sessions){
+    const mins=minsBetween(r.out,r.back);
+    lines.push([r.date,r.employee_id,`"${r.name}"`,r.out||"",r.back||"",mins!=null?mins:""].join(","));
   }
-  const blob = new Blob([lines.join("\n")], {type:"text/csv;charset=utf-8"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `checador_${todayISO()}_${selline.value}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  const blob=new Blob([lines.join("\n")],{type:"text/csv"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download=`checador_${fromDate.value}_${toDate.value}_${selline.value}.csv`; a.click();
   URL.revokeObjectURL(url);
 }
 </script>
 </body>
 </html>
+
 
 
