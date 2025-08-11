@@ -62,7 +62,7 @@
     </table>
 
     <div class="muted" id="loader"></div>
-    <div class="muted">Se sincroniza cada 5 segundos con <code>data.json</code>.</div>
+    <div class="muted">Se sincroniza cada <b>2</b> segundos con <code>data.json</code>.</div>
   </div>
 </div>
 
@@ -90,6 +90,7 @@ let byId = new Map();       // id -> { name }
 let tableRows = [];         // [{employee_id,name,out,back,linea,date}]
 let lastEventLocal = {};    // fallback por id => "salida"|"regreso"
 let pollTimer = null;
+let scanLock = false;       // anti doble escaneo
 
 /*** Utils ***/
 const todayISO = () => new Date().toISOString().slice(0,10);
@@ -133,9 +134,9 @@ async function init(){
   // catálogo
   await loadCatalog();
 
-  // primer render con data.json y cada 5s
+  // primer render con data.json y cada 2s
   await refresh();
-  pollTimer = setInterval(refresh, 5000);
+  pollTimer = setInterval(refresh, 2000);
 
   // input
   inp.addEventListener("keydown", (ev)=>{
@@ -234,8 +235,36 @@ function render() {
   `).join("");
 }
 
+/*** Inserción optimista en la tabla ***/
+function applyOptimistic(record) {
+  // record: {linea, employee_id, nombre, evento, timestamp}
+  const id = String(record.employee_id);
+  const idx = tableRows.findIndex(r => r.employee_id === id);
+  const base = idx >= 0 ? tableRows[idx] : {
+    employee_id: id,
+    name: record.nombre || byId.get(id)?.name || "",
+    linea: record.linea,
+    date: todayISO(),
+    out: null, back: null
+  };
+  if (record.evento === "salida")  base.out  = record.timestamp;
+  if (record.evento === "regreso") base.back = record.timestamp;
+
+  if (idx >= 0) tableRows[idx] = base;
+  else tableRows.push(base);
+
+  // Mantener orden por nombre
+  tableRows.sort((a,b)=> (a.name||"").localeCompare(b.name||""));
+  render();
+}
+
 /*** Escaneo / alta ***/
 async function handleScan(rawId) {
+  if (scanLock) return;
+  scanLock = true;
+  inp.disabled = true;
+  setTimeout(()=>{ scanLock=false; inp.disabled=false; }, 800);
+
   const id = String(rawId).replace(/\D+/g,"");
   if (!id) { setStatus(false, "ID inválido"); return; }
 
@@ -245,7 +274,7 @@ async function handleScan(rawId) {
   const nombre = found.name || "SIN NOMBRE";
   const linea = selline.value;
 
-  // Determinar próximo evento según lo que YA hay en data.json (mejor que solo local)
+  // Determinar próximo evento según lo que YA hay en data.json
   const row = tableRows.find(r => r.employee_id === id);
   let nextEvento;
   if (row && row.out && !row.back) nextEvento = "regreso";
@@ -255,6 +284,11 @@ async function handleScan(rawId) {
 
   const record = { linea, employee_id: id, nombre, evento: nextEvento, timestamp: new Date().toISOString() };
 
+  // —— UI OPTIMISTA: muestra de inmediato
+  applyOptimistic(record);
+  setStatus(true, `${nextEvento.toUpperCase()} — ${nombre} (${id})`);
+
+  // Guardar remoto
   try {
     const put = await fetch(WORKER_URL, {
       method: "POST",
@@ -262,14 +296,17 @@ async function handleScan(rawId) {
       body: JSON.stringify({ action: "append", record })
     });
     if (!put.ok) throw new Error("Worker " + put.status);
-    // éxito -> refrescar para que todos lo vean
+
+    // éxito -> recordar último evento y sincronizar Silenciosamente
     lastEventLocal[id] = nextEvento;
     localStorage.setItem(LEKey(), JSON.stringify(lastEventLocal));
-    setStatus(true, `${nextEvento.toUpperCase()} — ${nombre} (${id})`);
-    await refresh();
+    // actualizar desde la fuente compartida para quedar 100% alineados
+    refresh();
   } catch (err) {
     console.error(err);
-    setStatus(false, "No se pudo guardar. Reintenta.");
+    setStatus(false, "No se pudo guardar en el servidor. Reintentando…");
+    // forzar re-sync para deshacer optimismo si no se escribió
+    refresh();
   }
 }
 
