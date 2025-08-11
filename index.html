@@ -39,15 +39,12 @@
   .dur{font-variant-numeric:tabular-nums; font-weight:600}
   .flag{font-size:16px; line-height:1; color:#fbbf24; filter: drop-shadow(0 0 2px rgba(251,191,36,.5)); } /* ⚠️ */
 
-  /* Charts al final */
   .charts { display:grid; grid-template-columns: repeat(12, 1fr); gap:12px; margin-top:18px; }
   .chart-card { grid-column: span 12; background:#0f172a; border:1px solid #1f2937; border-radius:12px; padding:12px; }
   @media (min-width: 900px){
     .chart-card.sm-4 { grid-column: span 4; }
     .chart-card.sm-8 { grid-column: span 8; }
   }
-
-  /* Separador visual */
   .divider { height:1px; background:#1f2937; margin:16px 0; border-radius:999px; }
 </style>
 </head>
@@ -57,7 +54,7 @@
   <h1>Checador DL — Comida <span class="pill">Salida / Regreso</span></h1>
 
   <div class="tools">
-    <label for="line">Línea:</label>
+    <label for="line">Línea (tabla):</label>
     <select id="line"></select>
   </div>
 
@@ -69,6 +66,11 @@
     <button id="todayBtn">Hoy</button>
   </div>
 
+  <div class="tools">
+    <label for="chartLine">Gráficas línea:</label>
+    <select id="chartLine"></select>
+  </div>
+
   <div class="right tools">
     <button id="fs">Pantalla completa</button>
     <button id="export">Exportar CSV</button>
@@ -78,12 +80,12 @@
 
 <div class="wrap">
   <div class="card">
-    <!-- 1) Escáner -->
+    <!-- Escáner -->
     <div class="prompt">Escanea tu tarjeta o escribe tu ID y presiona Enter</div>
     <input id="inp" placeholder="Escanear aquí…" autocomplete="off" inputmode="numeric" />
     <div id="status" class="status"></div>
 
-    <!-- 2) Historial (tabla) — queda arriba -->
+    <!-- Historial -->
     <table>
       <thead>
         <tr>
@@ -99,11 +101,11 @@
     </table>
 
     <div class="muted" id="loader"></div>
-    <div class="muted">Se sincroniza cada 2 segundos con <code>data.json</code>. Las <b>gráficas</b> se actualizan únicamente al presionar <i>Actualizar gráficas</i>.</div>
+    <div class="muted">La tabla se sincroniza cada 2 s con <code>data.json</code>. Las <b>gráficas</b> sólo cambian al presionar <i>Actualizar gráficas</i>.</div>
 
     <div class="divider"></div>
 
-    <!-- 3) Gráficas — siempre hasta abajo -->
+    <!-- Gráficas -->
     <div class="charts">
       <div class="chart-card sm-4">
         <canvas id="chartBuckets"></canvas>
@@ -126,11 +128,13 @@ const CATALOGO_URL = "catalogo.json";
 const REMEMBER_LINE_KEY = "dlc:lastLine";
 const REMEMBER_FROM_KEY = "dlc:fromDate";
 const REMEMBER_TO_KEY   = "dlc:toDate";
+const REMEMBER_CHART_LINE = "dlc:chartLine";
 const LINES = Array.from({length:12}, (_,i)=>`DL${i+1}`);
 const MAX_OK = 70; // alerta sólo si >70
 
 /*** UI refs ***/
 const selline   = document.getElementById("line");
+const chartLine = document.getElementById("chartLine");
 const fromDate  = document.getElementById("fromDate");
 const toDate    = document.getElementById("toDate");
 const todayBtn  = document.getElementById("todayBtn");
@@ -145,13 +149,12 @@ const tbody     = document.getElementById("tbody");
 /*** State ***/
 let catalog = [];
 let byId = new Map();
-let sessions = [];      // para la tabla (se actualiza cada 2s)
+let sessions = [];      // tabla
 let rawData = [];
 let pollTimer = null;
 
 // charts
 let chartBuckets, chartCompliance, chartAvg;
-let chartsFrozenData = null; // “foto” de los datos que alimentan las gráficas
 
 /*** Utils ***/
 const pad = n => String(n).padStart(2,"0");
@@ -185,13 +188,17 @@ function hm(mins){ if(mins==null) return ""; return `${pad(Math.floor(mins/60))}
 init();
 async function init(){
   // selects
-  selline.innerHTML = LINES.map(l=>`<option value="${l}">${l}</option>`).join("");
-  selline.value = localStorage.getItem(REMEMBER_LINE_KEY) || LINES[0];
+  selline.innerHTML   = LINES.map(l=>`<option value="${l}">${l}</option>`).join("");
+  chartLine.innerHTML = LINES.map(l=>`<option value="${l}">${l}</option>`).join("");
+  selline.value   = localStorage.getItem(REMEMBER_LINE_KEY)  || LINES[0];
+  chartLine.value = localStorage.getItem(REMEMBER_CHART_LINE) || selline.value;
+
   fromDate.value = localStorage.getItem(REMEMBER_FROM_KEY) || todayISO();
   toDate.value   = localStorage.getItem(REMEMBER_TO_KEY)   || todayISO();
 
-  // cambios en filtros NO tocan las gráficas automáticamente
+  // cambios en filtros (sólo tabla)
   selline.addEventListener("change", ()=>{ localStorage.setItem(REMEMBER_LINE_KEY, selline.value); applyFiltersForTableOnly(); });
+  chartLine.addEventListener("change", ()=>{ localStorage.setItem(REMEMBER_CHART_LINE, chartLine.value); });
   fromDate.addEventListener("change", ()=>{ localStorage.setItem(REMEMBER_FROM_KEY, fromDate.value); applyFiltersForTableOnly(); });
   toDate.addEventListener("change",   ()=>{ localStorage.setItem(REMEMBER_TO_KEY,   toDate.value);   applyFiltersForTableOnly(); });
 
@@ -209,16 +216,15 @@ async function init(){
   });
   btnExport.addEventListener("click", downloadCSV);
   btnRefreshCharts.addEventListener("click", () => {
-    // congelamos las gráficas con la foto actual de sesiones
-    chartsFrozenData = sessions.slice();
-    drawChartsFrom(chartsFrozenData);
-    setStatus(true, "Gráficas actualizadas");
+    const rowsForCharts = buildSessions(rawData, chartLine.value, fromDate.value, toDate.value);
+    drawChartsFrom(rowsForCharts);
+    setStatus(true, `Gráficas actualizadas (${chartLine.value})`);
   });
 
   // catálogo
   await loadCatalog();
 
-  // primera carga + polling (sólo tabla)
+  // primera carga + polling (tabla)
   await refresh();
   pollTimer = setInterval(refresh, 2000);
 
@@ -259,7 +265,6 @@ async function refresh(){
 function applyFiltersForTableOnly(){
   sessions = buildSessions(rawData, selline.value, fromDate.value, toDate.value);
   renderTable();
-  // Importante: NO tocamos las gráficas aquí
 }
 
 /*** Build sessions (múltiples por empleado/día) ***/
@@ -298,7 +303,7 @@ function buildSessions(raw,line,from,to){
     for(const ev of arr){
       const type=String(ev.evento).toLowerCase();
       const name = String(ev.nombre || ev.name || byId.get(id)?.name || "");
-      lastName=name || lastName;
+      lastName = name || lastName;
       if(type==="salida"){
         if(lastOut){ result.push({date:d, linea:ln, employee_id:id, name:lastName, out:lastOut, back:null}); }
         lastOut=ev.timestamp;
@@ -347,10 +352,51 @@ function renderTable(){
   }).join("");
 }
 
-/*** Charts (sólo al presionar “Actualizar gráficas”) ***/
+/*** NEXT EVENT FIX — deducción robusta del siguiente evento ***/
+function isOpenLunchToday(id, line){
+  const t = todayISO();
+  // Tomamos TODOS los eventos del día para ese ID/linea, en orden cronológico
+  const evs = rawData
+    .filter(r => r.timestamp && r.linea===line && String(r.employee_id)===String(id) && dateOf(r.timestamp)===t)
+    .sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+
+  let open = false;
+  for(const e of evs){
+    const type = String(e.evento).toLowerCase();
+    if(type==="salida") open = true;
+    else if(type==="regreso" && open) open = false;
+  }
+  return open; // true = hay una salida sin regreso aún
+}
+
+/*** Scan handler ***/
+async function handleScan(rawId){
+  const id=String(rawId).replace(/\D+/g,"");
+  if(!id) return setStatus(false,"ID inválido");
+  const found=byId.get(id);
+  if(!found) return setStatus(false,`No se encontró ${id}`);
+  const linea=selline.value;
+
+  // FIX: decidir correctamente según último estado real del día
+  const next = isOpenLunchToday(id, linea) ? "regreso" : "salida";
+
+  const record={linea,employee_id:id,nombre:found.name,evento:next,timestamp:new Date().toISOString()};
+  try{
+    const put=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"append",record})});
+    if(!put.ok) throw new Error();
+    setStatus(true,`${next.toUpperCase()} — ${found.name} (${id})`);
+
+    // si estabas viendo otro rango, te muevo a hoy (sólo tabla)
+    const t=todayISO();
+    if(fromDate.value!==t||toDate.value!==t){ fromDate.value=t; toDate.value=t; }
+    await refresh(); // refresca tabla; las gráficas quedan congeladas
+  }catch(e){ setStatus(false,"No se pudo guardar"); }
+}
+
+/*** Charts (se actualizan sólo al presionar) ***/
 function drawChartsFrom(rows){
   // buckets globales
-  let ok=0, tol=0, over=0, inc=0;
+  let ok=0, over=0, inc=0;
   const dayStats = new Map(); // date -> { total, ok(≤70), over(>70), inc, avgDurSum, avgCount }
 
   for(const r of rows){
@@ -389,7 +435,7 @@ function drawChartsFrom(rows){
   });
   const complianceData = {
     labels: days,
-    datasets: [{ label: "% Cumplimiento (≤70 min)", data: pct }]
+    datasets: [{ label: `% Cumplimiento (≤${MAX_OK} min)`, data: pct }]
   };
   if(chartCompliance){ chartCompliance.data=complianceData; chartCompliance.update(); }
   else {
@@ -398,7 +444,7 @@ function drawChartsFrom(rows){
       data: complianceData,
       options: {
         scales:{ x:{ ticks:{ color:"#e5e7eb"} }, y:{ ticks:{ color:"#e5e7eb"}, suggestedMin:0, suggestedMax:100 }},
-        plugins:{ legend:{ labels:{ color:"#e5e7eb"}}, title:{display:true, text:`Cumplimiento por día — ${selline.value}`, color:"#e5e7eb"}}
+        plugins:{ legend:{ labels:{ color:"#e5e7eb"}}, title:{display:true, text:`Cumplimiento por día — ${chartLine.value}`, color:"#e5e7eb"}}
       }
     });
   }
@@ -419,34 +465,10 @@ function drawChartsFrom(rows){
       data: avgData,
       options: {
         scales:{ x:{ ticks:{ color:"#e5e7eb"} }, y:{ ticks:{ color:"#e5e7eb"} } },
-        plugins:{ legend:{ labels:{ color:"#e5e7eb"}}, title:{display:true, text:`Promedio de duración — ${selline.value}`, color:"#e5e7eb"}}
+        plugins:{ legend:{ labels:{ color:"#e5e7eb"}}, title:{display:true, text:`Promedio de duración — ${chartLine.value}`, color:"#e5e7eb"}}
       }
     });
   }
-}
-
-/*** Scan handler ***/
-async function handleScan(rawId){
-  const id=String(rawId).replace(/\D+/g,"");
-  if(!id) return setStatus(false,"ID inválido");
-  const found=byId.get(id);
-  if(!found) return setStatus(false,`No se encontró ${id}`);
-  const linea=selline.value;
-  const t=todayISO();
-
-  // últimos de hoy para decidir evento
-  const todaySessions=buildSessions(rawData,linea,t,t).filter(s=>s.employee_id===id);
-  let next="salida";
-  if(todaySessions.length && todaySessions[0].out && !todaySessions[0].back) next="regreso";
-
-  const record={linea,employee_id:id,nombre:found.name,evento:next,timestamp:new Date().toISOString()};
-  try{
-    const put=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"append",record})});
-    if(!put.ok) throw new Error();
-    setStatus(true,`${next.toUpperCase()} — ${found.name} (${id})`);
-    if(fromDate.value!==t||toDate.value!==t){ fromDate.value=t; toDate.value=t; }
-    await refresh(); // sólo tabla
-  }catch(e){ setStatus(false,"No se pudo guardar"); }
 }
 
 /*** CSV ***/
