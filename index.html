@@ -30,6 +30,28 @@
   .id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
   .time{font-variant-numeric:tabular-nums}
   .right{margin-left:auto}
+
+  /* Bloque de gráficas */
+  .charts {
+    margin-top:18px;
+    display:grid;
+    gap:16px;
+  }
+  @media (min-width: 900px){
+    .charts { grid-template-columns: 1fr 2fr; }
+  }
+  .chart-card {
+    background:#0f172a;
+    border:1px solid #1f2937;
+    border-radius:12px;
+    padding:12px;
+  }
+  .chart-title {
+    font-size:14px;
+    font-weight:700;
+    margin:0 0 8px;
+    color:#e5e7eb;
+  }
 </style>
 </head>
 <body>
@@ -72,8 +94,23 @@
 
     <div class="muted" id="loader"></div>
     <div class="muted">Se sincroniza cada 1 segundo con <code>data.json</code>.</div>
+
+    <!-- === GRÁFICAS === -->
+    <div class="charts">
+      <div class="chart-card">
+        <p class="chart-title">Cumplimiento vs. Alertas (rango y línea seleccionados)</p>
+        <canvas id="pieCompliance" height="190"></canvas>
+      </div>
+      <div class="chart-card">
+        <p class="chart-title">Tendencia diaria de % de cumplimiento</p>
+        <canvas id="lineTrend" height="190"></canvas>
+      </div>
+    </div>
   </div>
 </div>
+
+<!-- Chart.js (CDN) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
 /*** CONFIG ***/
@@ -97,6 +134,10 @@ const loader    = document.getElementById("loader");
 const btnFS     = document.getElementById("fs");
 const btnExport = document.getElementById("export");
 const tbody     = document.getElementById("tbody");
+
+/*** Charts refs ***/
+let pieChart = null;
+let lineChart = null;
 
 /*** State ***/
 let catalog = [];
@@ -208,7 +249,11 @@ function buildSessions(raw,line,from,to){
 /*** Render ***/
 function render(){
   const rows=sessions;
-  if(!rows.length){ tbody.innerHTML=`<tr><td colspan="5" style="text-align:center;opacity:.7">Sin registros para rango</td></tr>`; return; }
+  if(!rows.length){
+    tbody.innerHTML=`<tr><td colspan="5" style="text-align:center;opacity:.7">Sin registros para rango</td></tr>`;
+    updateCharts([]); // vacía
+    return;
+  }
   tbody.innerHTML=rows.map(r=>{
     const mins=minsBetween(r.out,r.back);
     const ok=mins!=null?(mins<=MAX_OK):true;
@@ -221,6 +266,9 @@ function render(){
       <td>${total}</td>
     </tr>`;
   }).join("");
+
+  // Actualiza gráficas con las sesiones actuales
+  updateCharts(rows);
 }
 
 /*** Scan handler ***/
@@ -234,7 +282,7 @@ async function handleScan(rawId){
   const todaySessions=buildSessions(rawData,linea,today,today).filter(s=>s.employee_id===id);
   let next="salida";
   if(todaySessions.length && todaySessions[todaySessions.length-1].out && !todaySessions[todaySessions.length-1].back) next="regreso";
-  const record={linea,employee_id:id,nombre:found.name,evento:next,timestamp:new Date().toISOString()};
+  const record={linea,employee_id:id,nombre:found.name,evento:next,timestamp=new Date().toISOString()};
   try{
     const put=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"append",record})});
     if(!put.ok) throw new Error();
@@ -257,6 +305,78 @@ function downloadCSV(){
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a"); a.href=url; a.download=`checador_${fromDate.value}_${toDate.value}_${selline.value}.csv`; a.click();
   URL.revokeObjectURL(url);
+}
+
+/*** ====== GRÁFICAS (cumplimiento) ====== ***/
+function updateCharts(rows){
+  // Solo consideramos sesiones cerradas (con salida y regreso válidos)
+  const closed = rows.filter(r => r.out && r.back && minsBetween(r.out, r.back) != null);
+  let okCount = 0, alertCount = 0;
+
+  // Por día: {fecha: {ok, total}}
+  const perDay = new Map();
+
+  for(const r of closed){
+    const mins = minsBetween(r.out, r.back);
+    const ok = mins <= MAX_OK;
+    if(ok) okCount++; else alertCount++;
+
+    const d = r.date;
+    if(!perDay.has(d)) perDay.set(d, { ok:0, total:0 });
+    perDay.get(d).total++;
+    if(ok) perDay.get(d).ok++;
+  }
+
+  // --- Pie (OK vs Alertas) ---
+  const pieCtx = document.getElementById("pieCompliance").getContext("2d");
+  const pieData = [okCount, alertCount];
+
+  if(pieChart){ pieChart.destroy(); }
+  pieChart = new Chart(pieCtx, {
+    type: "doughnut",
+    data: {
+      labels: ["Cumplimiento (≤ 70 min)","Alertas (> 70 min)"],
+      datasets: [{ data: pieData }]
+    },
+    options: {
+      plugins: {
+        legend: { labels: { color: "#e5e7eb" } },
+        tooltip: { callbacks: { label: (ctx)=> `${ctx.label}: ${ctx.raw}` } }
+      }
+    }
+  });
+
+  // --- Línea (tendencia diaria % cumplimiento) ---
+  // Ordenamos fechas
+  const dates = Array.from(perDay.keys()).sort();
+  const pct = dates.map(d => {
+    const {ok, total} = perDay.get(d);
+    return total ? Math.round((ok/total)*100) : 0;
+  });
+
+  const lineCtx = document.getElementById("lineTrend").getContext("2d");
+  if(lineChart){ lineChart.destroy(); }
+  lineChart = new Chart(lineCtx, {
+    type: "line",
+    data: {
+      labels: dates,
+      datasets: [{
+        label: "% Cumplimiento",
+        data: pct,
+        tension: 0.3
+      }]
+    },
+    options: {
+      scales: {
+        x: { ticks: { color:"#e5e7eb" }, grid: { color:"#1f2937" } },
+        y: { min:0, max:100, ticks: { color:"#e5e7eb", callback:(v)=>v+"%" }, grid: { color:"#1f2937" } }
+      },
+      plugins: {
+        legend: { labels: { color:"#e5e7eb" } },
+        tooltip: { callbacks: { label: (ctx)=> `${ctx.parsed.y}%` } }
+      }
+    }
+  });
 }
 </script>
 </body>
