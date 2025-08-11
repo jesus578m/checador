@@ -63,7 +63,7 @@
     </table>
 
     <div class="muted" id="loader"></div>
-    <div class="muted">Se sincroniza cada 5 segundos con <code>data.json</code>.</div>
+    <div class="muted">Se sincroniza cada 1 segundos con <code>data.json</code>.</div>
   </div>
 </div>
 
@@ -144,7 +144,7 @@ async function init(){
 
   await loadCatalog();
   await refresh();
-  pollTimer = setInterval(refresh, 5000);
+  pollTimer = setInterval(refresh, 1000);
 
   inp.addEventListener("keydown", (ev)=>{
     if (ev.key === "Enter") {
