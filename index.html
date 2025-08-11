@@ -56,26 +56,28 @@
           <th>Nombre</th>
           <th style="width:150px">Salida</th>
           <th style="width:150px">Regreso</th>
+          <th style="width:160px">Total</th> <!-- NUEVO -->
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
     </table>
 
     <div class="muted" id="loader"></div>
-    <div class="muted">Se sincroniza cada <b>2</b> segundos con <code>data.json</code>.</div>
+    <div class="muted">Se sincroniza cada 5 segundos con <code>data.json</code>.</div>
   </div>
 </div>
 
 <script>
 /*** CONFIG ***/
-const WORKER_URL   = "https://checador.montoyacarrillojesus6.workers.dev/";
-const DATA_URL     = "https://raw.githubusercontent.com/jesus578m/checador/main/data.json";
-const CATALOGO_URL = "catalogo.json";
+const WORKER_URL   = "https://checador.montoyacarrillojesus6.workers.dev/"; 
+const DATA_URL     = "https://raw.githubusercontent.com/jesus578m/checador/main/data.json"; 
+const CATALOGO_URL = "catalogo.json"; 
 const REMEMBER_LINE_KEY = "dlc:lastLine";
-const LAST_EVENT_KEY_PREFIX   = "dlc:lastEvent:";    // fallback local por día
-const PENDING_KEY_PREFIX      = "dlc:pending:";      // eventos optimistas por día
-const PENDING_TTL_MS          = 45_000;              // cuánto tiempo mantenemos optimista
+const LAST_EVENT_KEY_PREFIX = "dlc:lastEvent:"; 
 const LINES = Array.from({length:12}, (_,i)=>`DL${i+1}`);
+
+// --- configuración de tolerancia ---
+const MAX_OK = 70; // alerta solo si es MAYOR a 70 min
 
 /*** UI refs ***/
 const selline   = document.getElementById("line");
@@ -87,18 +89,15 @@ const btnExport = document.getElementById("export");
 const tbody     = document.getElementById("tbody");
 
 /*** State ***/
-let catalog = [];
-let byId = new Map();
-let tableRows = [];         // [{employee_id,name,out,back,linea,date}]
-let lastEventLocal = {};    // id -> "salida"|"regreso"
-let pending = [];           // [{linea, employee_id, nombre, evento, timestamp, addedAt}]
+let catalog = [];           
+let byId = new Map();       
+let tableRows = [];         
+let lastEventLocal = {};    
 let pollTimer = null;
-let scanLock = false;
 
 /*** Utils ***/
 const todayISO = () => new Date().toISOString().slice(0,10);
 const LEKey = () => LAST_EVENT_KEY_PREFIX + todayISO();
-const PKey  = () => PENDING_KEY_PREFIX + todayISO();
 
 function setStatus(ok, msg) {
   statusBox.className = "status " + (ok ? "ok" : "err");
@@ -115,44 +114,38 @@ function fmtTime(ts){
     return d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
   } catch { return ""; }
 }
-function loadPending(){
-  try { pending = JSON.parse(localStorage.getItem(PKey())||"[]"); } catch { pending = []; }
-  prunePending();
+function minsBetween(a, b){
+  if(!a || !b) return null;
+  const t1 = +new Date(a), t2 = +new Date(b);
+  if(isNaN(t1) || isNaN(t2)) return null;
+  return Math.round((t2 - t1) / 60000);
 }
-function savePending(){ localStorage.setItem(PKey(), JSON.stringify(pending)); }
-function prunePending(){
-  const now = Date.now();
-  pending = pending.filter(p => now - (p.addedAt||0) < PENDING_TTL_MS);
+function fmtHM(mins){
+  if(mins == null) return "";
+  const h = Math.floor(mins/60), m = mins % 60;
+  return String(h).padStart(2,'0') + ":" + String(m).padStart(2,'0');
 }
 
 /*** Boot ***/
 init();
 async function init(){
-  // líneas
   selline.innerHTML = LINES.map(l=>`<option value="${l}">${l}</option>`).join("");
   const remembered = localStorage.getItem(REMEMBER_LINE_KEY);
   selline.value = (remembered && LINES.includes(remembered)) ? remembered : LINES[0];
   selline.addEventListener("change", ()=>{ localStorage.setItem(REMEMBER_LINE_KEY, selline.value); render(); });
 
-  // UI
   btnFS.addEventListener("click", () => {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen();
     else document.exitFullscreen();
   });
   btnExport.addEventListener("click", downloadCSV);
 
-  // estado local
   try { lastEventLocal = JSON.parse(localStorage.getItem(LEKey())||"{}"); } catch { lastEventLocal = {}; }
-  loadPending();
 
-  // catálogo
   await loadCatalog();
-
-  // primer render + polling
   await refresh();
-  pollTimer = setInterval(refresh, 2000);
+  pollTimer = setInterval(refresh, 5000);
 
-  // input
   inp.addEventListener("keydown", (ev)=>{
     if (ev.key === "Enter") {
       const raw = (inp.value||"").trim(); inp.value = "";
@@ -183,15 +176,13 @@ async function loadCatalog() {
   }
 }
 
-/*** Data refresh (todos lo ven) ***/
+/*** Data refresh ***/
 async function refresh() {
   try {
     const res = await fetch(DATA_URL + "?_=" + Date.now(), { cache: "no-store" });
     const text = await res.text();
     const json = JSON.parse(text || "[]");
     tableRows = consolidateToday(json, selline.value);
-    // fusionar pendientes
-    mergePendingIntoRows();
     render();
   } catch (e) {
     console.error("No se pudo leer data.json", e);
@@ -199,13 +190,12 @@ async function refresh() {
   }
 }
 
-/*** Consolidación (soporta 2 formatos) ***/
+/*** Consolidación ***/
 function consolidateToday(raw, line) {
   const today = todayISO();
-  const map = new Map(); // key: employee_id -> {employee_id,name,out,back,linea,date}
+  const map = new Map();
 
   for (const r of Array.isArray(raw) ? raw : []) {
-    // formato A: consolidado
     if (r && r.date && r.linea && r.employee_id) {
       if (r.date !== today || r.linea !== line) continue;
       const id = String(r.employee_id);
@@ -216,7 +206,6 @@ function consolidateToday(raw, line) {
       map.set(id, row);
       continue;
     }
-    // formato B: evento suelto
     if (r && r.timestamp && r.linea && r.employee_id && r.evento) {
       const d = new Date(r.timestamp);
       const dISO = isNaN(d)? null : d.toISOString().slice(0,10);
@@ -224,90 +213,43 @@ function consolidateToday(raw, line) {
       const id = String(r.employee_id);
       const name = String(r.nombre || r.name || byId.get(id)?.name || "");
       const row = map.get(id) || { employee_id:id, name, linea:line, date:today, out:null, back:null };
-      const ev = String(r.evento).toLowerCase();
-      if (ev === "salida")  row.out  = r.timestamp;
-      if (ev === "regreso") row.back = r.timestamp;
+      if (String(r.evento).toLowerCase() === "salida")  row.out  = r.timestamp;
+      if (String(r.evento).toLowerCase() === "regreso") row.back = r.timestamp;
       map.set(id, row);
     }
   }
   return Array.from(map.values()).sort((a,b)=> (a.name||"").localeCompare(b.name||""));
 }
 
-/*** Fusión de pendientes con los datos remotos ***/
-function mergePendingIntoRows() {
-  prunePending();
-  const line = selline.value;
-  // índice por id para acceso rápido
-  const idx = new Map(tableRows.map((r,i)=>[r.employee_id,i]));
-  // para cada pendiente de la línea actual
-  for (const p of pending.filter(p=>p.linea===line)) {
-    const i = idx.get(p.employee_id);
-    const timestamp = p.timestamp;
-    if (i == null) {
-      // no existe la fila aún -> crearla con el evento pendiente
-      tableRows.push({
-        employee_id: p.employee_id,
-        name: p.nombre || byId.get(p.employee_id)?.name || "",
-        linea: line,
-        date: todayISO(),
-        out:  p.evento==="salida"  ? timestamp : null,
-        back: p.evento==="regreso" ? timestamp : null
-      });
-      continue;
-    }
-    const row = tableRows[i];
-    if (p.evento==="salida"  && !row.out)  row.out  = timestamp;
-    if (p.evento==="regreso" && !row.back) row.back = timestamp;
-  }
-  // si la fuente remota ya trae el evento (out/back presente), limpiamos dicho pendiente
-  const remaining = [];
-  for (const p of pending) {
-    const r = tableRows.find(x => x.employee_id===p.employee_id && x.linea===p.linea);
-    const confirmed = r && ((p.evento==="salida" && r.out) || (p.evento==="regreso" && r.back));
-    if (!confirmed) remaining.push(p);
-  }
-  pending = remaining;
-  savePending();
-
-  // mantener orden
-  tableRows.sort((a,b)=> (a.name||"").localeCompare(b.name||""));
-}
-
 /*** Render tabla ***/
 function render() {
   const rows = tableRows;
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="4" style="opacity:.7; text-align:center; padding:14px">
+    tbody.innerHTML = `<tr><td colspan="5" style="opacity:.7; text-align:center; padding:14px">
       No hay registros para hoy en <b>${esc(selline.value)}</b>.
     </td></tr>`;
     return;
   }
-  tbody.innerHTML = rows.map(r=>`
-    <tr>
-      <td class="id">${esc(r.employee_id)}</td>
-      <td>${esc(r.name||"")}</td>
-      <td class="time">${r.out ? fmtTime(r.out) : ""}</td>
-      <td class="time">${r.back ? fmtTime(r.back) : ""}</td>
-    </tr>
-  `).join("");
-}
-
-/*** Inserción optimista ***/
-function applyOptimistic(record) {
-  const now = Date.now();
-  pending.push({ ...record, addedAt: now });
-  savePending();
-  mergePendingIntoRows();   // para que se vea inmediato
-  render();
+  tbody.innerHTML = rows.map(r=>{
+    const mins = minsBetween(r.out, r.back);
+    const ok = mins!=null ? (mins <= MAX_OK) : true;
+    const total = mins!=null
+      ? `<span class="time" title="${mins} min">${fmtHM(mins)}${ok ? "" : " ⚠️"}</span>`
+      : "";
+    return `
+      <tr>
+        <td class="id">${esc(r.employee_id)}</td>
+        <td>${esc(r.name||"")}</td>
+        <td class="time">${r.out ? fmtTime(r.out) : ""}</td>
+        <td class="time">${r.back ? fmtTime(r.back) : ""}</td>
+        <td>${total}</td>
+      </tr>
+    `;
+  }).join("");
 }
 
 /*** Escaneo / alta ***/
 async function handleScan(rawId) {
-  if (scanLock) return;
-  scanLock = true;
-  inp.disabled = true;
-  setTimeout(()=>{ scanLock=false; inp.disabled=false; }, 800);
-
   const id = String(rawId).replace(/\D+/g,"");
   if (!id) { setStatus(false, "ID inválido"); return; }
 
@@ -317,7 +259,6 @@ async function handleScan(rawId) {
   const nombre = found.name || "SIN NOMBRE";
   const linea = selline.value;
 
-  // decidir siguiente evento con lo que ya tenemos
   const row = tableRows.find(r => r.employee_id === id);
   let nextEvento;
   if (row && row.out && !row.back) nextEvento = "regreso";
@@ -326,11 +267,6 @@ async function handleScan(rawId) {
 
   const record = { linea, employee_id: id, nombre, evento: nextEvento, timestamp: new Date().toISOString() };
 
-  // mostrar al instante
-  applyOptimistic(record);
-  setStatus(true, `${nextEvento.toUpperCase()} — ${nombre} (${id})`);
-
-  // mandar al worker
   try {
     const put = await fetch(WORKER_URL, {
       method: "POST",
@@ -338,14 +274,13 @@ async function handleScan(rawId) {
       body: JSON.stringify({ action: "append", record })
     });
     if (!put.ok) throw new Error("Worker " + put.status);
-
     lastEventLocal[id] = nextEvento;
     localStorage.setItem(LEKey(), JSON.stringify(lastEventLocal));
-    // no forzamos refresh inmediato; el buffer mantiene visible hasta que propague
+    setStatus(true, `${nextEvento.toUpperCase()} — ${nombre} (${id})`);
+    await refresh();
   } catch (err) {
     console.error(err);
-    setStatus(false, "No se pudo guardar en el servidor. Reintentando…");
-    // si falla, dejamos el pendiente; el TTL lo limpiará
+    setStatus(false, "No se pudo guardar. Reintenta.");
   }
 }
 
@@ -353,13 +288,15 @@ async function handleScan(rawId) {
 function downloadCSV(){
   const rows = tableRows;
   if (!rows.length) { setStatus(false, "No hay registros para exportar"); return; }
-  const head = ["fecha","linea","employee_id","nombre","salida","regreso"];
+  const head = ["fecha","linea","employee_id","nombre","salida","regreso","total_min"];
   const lines = [head.join(",")];
   for (const r of rows) {
+    const mins = minsBetween(r.out, r.back);
     const row = [
       r.date, r.linea, r.employee_id,
       `"${String(r.name||"").replace(/"/g,'""')}"`,
-      r.out ? fmtTime(r.out) : "", r.back ? fmtTime(r.back) : ""
+      r.out ? fmtTime(r.out) : "", r.back ? fmtTime(r.back) : "",
+      mins!=null ? mins : ""
     ];
     lines.push(row.join(","));
   }
